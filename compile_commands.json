@@ -1,0 +1,34 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-m64",
+      "-Wall",
+      "-I./inc",
+      "-ggdb",
+      "-c",
+      "-o",
+      "NvFBCCUDAAsync.o",
+      "src/NvFBCCUDAAsync.c"
+    ],
+    "directory": "/home/gintautas/Projects/veil-sigrun",
+    "file": "/home/gintautas/Projects/veil-sigrun/src/NvFBCCUDAAsync.c",
+    "output": "/home/gintautas/Projects/veil-sigrun/NvFBCCUDAAsync.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-m64",
+      "-Wall",
+      "-I./inc",
+      "-ggdb",
+      "-c",
+      "-o",
+      "NvFBCUtils.o",
+      "common/NvFBCUtils.c"
+    ],
+    "directory": "/home/gintautas/Projects/veil-sigrun",
+    "file": "/home/gintautas/Projects/veil-sigrun/common/NvFBCUtils.c",
+    "output": "/home/gintautas/Projects/veil-sigrun/NvFBCUtils.o"
+  }
+]
