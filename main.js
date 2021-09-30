@@ -3,7 +3,6 @@ const url = "http://127.0.0.1:8080/"
 async function getOffer() {
   let response = await fetch(url + "offer", {
     method: "GET",
-    mode: "cors"
   })
 
   let sdp = await response.text()
@@ -18,10 +17,29 @@ async function getOffer() {
 async function sendAnswer(answer) {
   fetch(url + "answer", {
     method: "POST",
-    mode: "cors",
     body: answer
   })
 }
+
+async function getICECandidate() {
+  let response = await fetch(url + "candidate", {
+    method: "GET",
+  })
+
+  let candidate = await response.json()
+
+  return candidate
+}
+
+async function sendCandidate(candidate) {
+  fetch(url + "candidate", {
+    method: "POST",
+    body: candidate
+  })
+}
+
+
+
 
 
 const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] }
@@ -38,17 +56,25 @@ getOffer().then((offer) => {
   )
 })
 
-
-
 // Listen for local ICE candidates on the local RTCPeerConnection
 peerConnection.addEventListener('icecandidate', event => {
+  console.log(`Found new ice candidate`)
   if (event.candidate) {
-    signalingChannel.send({ 'new-ice-candidate': event.candidate });
+    sendCandidate(event.candidate)
   }
 });
 
-peerConnection.addEventListener('connectionstatechange', event => {
-  if (peerConnection.connectionState === 'connected') {
-    console.log("HOLY SHIT WE'RE IN")
-  }
+peerConnection.addEventListener('connectionstatechange', () => {
+  console.log(`Connection state changed to ${peerConnection.connectionState}`)
 });
+
+async () => {
+  for (; ;) {
+    if (peerConnection.iceGatheringState != "complete") {
+      candidate = await getICECandidate()
+      peerConnection.addIceCandidate(candidate)
+    } else {
+      break
+    }
+  }
+}
