@@ -8,12 +8,12 @@
       "-ggdb",
       "-c",
       "-o",
-      "NvFBCCUDAAsync.o",
-      "src/NvFBCCUDAAsync.c"
+      "NvFBCToGLEnc.o",
+      "src/NvFBCToGLEnc.c"
     ],
     "directory": "/home/gintautas/Projects/veil-sigrun",
-    "file": "/home/gintautas/Projects/veil-sigrun/src/NvFBCCUDAAsync.c",
-    "output": "/home/gintautas/Projects/veil-sigrun/NvFBCCUDAAsync.o"
+    "file": "/home/gintautas/Projects/veil-sigrun/src/NvFBCToGLEnc.c",
+    "output": "/home/gintautas/Projects/veil-sigrun/NvFBCToGLEnc.o"
   },
   {
     "arguments": [
