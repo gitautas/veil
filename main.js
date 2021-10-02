@@ -44,11 +44,16 @@ const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' 
 
 const peerConnection = new RTCPeerConnection(configuration)
 
+
+peerConnection.addEventListener('track', async (event) => {
+  remoteStream.addTrack(event.track, remoteStream);
+  console.log("Added remote track")
+});
+
+
 // Listen for local ICE candidates on the local RTCPeerConnection
 peerConnection.addEventListener('icecandidate', event => {
   if (event.candidate) {
-    console.log("Found new ice candidate")
-    console.log(event.candidate)
     sendCandidate(event.candidate)
     if (peerConnection.iceConnectionState != "completed") {
       getICECandidate(peerConnection)
@@ -57,18 +62,24 @@ peerConnection.addEventListener('icecandidate', event => {
 });
 
 peerConnection.addEventListener('connectionstatechange', state => {
-  console.log(state)
   console.log(`Connection state changed to ${peerConnection.connectionState}`)
 });
 
 getOffer().then((offer) => {
-  console.log(offer)
+  console.log(offer.sdp)
   peerConnection.setRemoteDescription(offer).then(
     peerConnection.createAnswer().then((answer) => {
       peerConnection.setLocalDescription(answer)
-      console.log(answer)
+      console.log(answer.sdp)
       sendAnswer(answer.sdp)
       console.log(peerConnection)
     })
   )
 })
+
+
+
+const remoteStream = new MediaStream();
+const remoteVideo = document.querySelector('#video');
+remoteVideo.srcObject = remoteStream;
+console.log("Added remote source")
