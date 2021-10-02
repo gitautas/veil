@@ -46,10 +46,6 @@ static void usage(const char *pname) {
   printf("  --codec|-c <str>  Codec to use\n");
   printf("                    Can be 'h264' or 'hevc'\n");
   printf("                    (default: 'h264')\n");
-  printf("  --output|-o <str> Name of the output file \n");
-  printf("                    (default: \"output\"\n");
-  printf("                    The codec used will be appended to this\n");
-  printf("                    name\n");
 }
 
 /**
@@ -215,8 +211,6 @@ int main(int argc, char *argv[]) {
   NVFBC_DESTROY_HANDLE_PARAMS destroyHandleParams;
 
   void *encoder = NULL;
-
-  FILE *f = NULL;
 
   enum codecType codec = CODEC_H264;
 
@@ -470,8 +464,10 @@ int main(int argc, char *argv[]) {
 
   presetConfig.version = NV_ENC_PRESET_CONFIG_VER;
   presetConfig.presetCfg.version = NV_ENC_CONFIG_VER;
+
   encStatus = pEncFn.nvEncGetEncodePresetConfig(
-      encoder, encodeGuid, NV_ENC_PRESET_LOW_LATENCY_HP_GUID, &presetConfig);
+      encoder, encodeGuid, NV_ENC_PRESET_LOW_LATENCY_DEFAULT_GUID,
+      &presetConfig);
   if (encStatus != NV_ENC_SUCCESS) {
     fprintf(stderr,
             "Failed to obtain preset settings, "
@@ -480,8 +476,11 @@ int main(int argc, char *argv[]) {
     goto enc_fail;
   }
 
-  presetConfig.presetCfg.rcParams.averageBitRate = 5 * 1024 * 1024;
-  presetConfig.presetCfg.rcParams.maxBitRate = 8 * 1024 * 1024;
+  presetConfig.presetCfg.profileGUID = NV_ENC_H264_PROFILE_BASELINE_GUID;
+  presetConfig.presetCfg.rcParams.averageBitRate =
+      1 * 1024 * 1024; /* Changed from 5 */
+  presetConfig.presetCfg.rcParams.maxBitRate =
+      3 * 1024 * 1024;                                   /* Changed from 8 */
   presetConfig.presetCfg.rcParams.vbvBufferSize = 87382; /* single frame */
 
   /*
@@ -491,7 +490,7 @@ int main(int argc, char *argv[]) {
 
   initParams.version = NV_ENC_INITIALIZE_PARAMS_VER;
   initParams.encodeGUID = encodeGuid;
-  initParams.presetGUID = NV_ENC_PRESET_LOW_LATENCY_HQ_GUID;
+  initParams.presetGUID = NV_ENC_PRESET_LOW_LATENCY_DEFAULT_GUID;
   initParams.encodeConfig = &presetConfig.presetCfg;
   initParams.encodeWidth = frameSize.w;
   initParams.encodeHeight = frameSize.h;
@@ -689,11 +688,6 @@ enc_fail:
     }
 
     outputBuffer = NULL;
-  }
-
-  if (f) {
-    fclose(f);
-    f = NULL;
   }
 
   /*

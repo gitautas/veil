@@ -34,7 +34,7 @@ endif
 
 SOURCES = src/NvFBCToGLEnc.c ./common/NvFBCUtils.c
 OBJECTS = $(call BUILD_OBJECT_LIST,$(SOURCES))
-HEADERS = ./inc/NvFBCUtils.h ./inc/cuda_drvapi_dynlink_cuda.h
+HEADERS = ./inc/NvFBCUtils.h ./inc/nvEncodeAPI.h ./inc/cuda_drvapi_dynlink_cuda.h
 
 .PRECIOUS: $(TARGET) $(OBJECTS)
 .PHONY: default all clean
