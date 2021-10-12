@@ -1,3 +1,5 @@
+
+
 const url = "http://127.0.0.1:8080/"
 
 async function getOffer() {
@@ -77,9 +79,62 @@ getOffer().then((offer) => {
   )
 })
 
-
-
 const remoteStream = new MediaStream();
 const remoteVideo = document.querySelector('#video');
 remoteVideo.srcObject = remoteStream;
 console.log("Added remote source")
+
+// Gamepad stuff
+
+class SimpleGP {
+  buttons = []
+  axes = []
+
+  constructor (buttons, axes) {
+    this.buttons = buttons.map(e => e.pressed)
+    this.axes = axes.map(e => e.toFixed(2))
+  }
+
+  compareButtons (old) {
+    this.buttons.map((v, i) => {
+      if (v != old.buttons[i]) {
+        console.log(`Button ${i}: ${v}`)
+      }
+    })
+  }
+
+  compareAxes (old) {
+    this.axes.map((v, i) => {
+      if (Math.abs(v) > 0.1 && v != old.axes[i]) {
+        console.log(`Axis ${i}: ${v}`)
+      }
+    })
+  }
+
+  compare (old) {
+    this.compareAxes(old)
+    this.compareButtons(old)
+  }
+}
+
+const POLL_RATE = 250 // Hz
+const pollInterval = 1 / POLL_RATE * 1000
+
+window.addEventListener("gamepadconnected", (e) => {
+  console.log(`Gamepad ${e.gamepad.id} connected!`)
+
+  let ogp = navigator.getGamepads()[e.gamepad.index]
+  let oldGP = new SimpleGP(ogp.buttons, ogp.axes)
+
+  setInterval(() => {
+    let gamep = navigator.getGamepads()[e.gamepad.index]
+    var GP = new SimpleGP(gamep.buttons, gamep.axes)
+
+    if (JSON.stringify(oldGP) != JSON.stringify(GP)) {
+      GP.compare(oldGP)
+    }
+
+    oldGP = GP // This
+
+  }, pollInterval * 10)
+})
