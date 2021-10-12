@@ -97,8 +97,15 @@ getOffer().then((offer) => {
 
 
 // Gamepad stuff
+//
+// This is all hacked together to achieve MVP as soon as possible, but basically the entire
+// comparison logic is flawed and WILL drop inputs, this is only hacked together for testing
+// also this doesn't check that the gamepad has standard mapping and just assumes that as fact.
+// This will be rectified in the full rewrite after MVP state is achieved.
 
-class SimpleGP {
+
+
+class SimpleGP { // Can't wait to redo this shit
   buttons = []
   axes = []
 
@@ -111,7 +118,7 @@ class SimpleGP {
     let str
     this.buttons.map((v, i) => {
       if (v != old.buttons[i]) {
-        str = `Button ${i}: ${v}`
+        str = INPUTH[i] + ":" + (+ v)
       }
     })
     return str
@@ -120,8 +127,8 @@ class SimpleGP {
   compareAxes (old) {
     let str
     this.axes.map((v, i) => {
-      if (Math.abs(v) > 0.05 && v != old.axes[i]) {
-        str = `Axis ${i}: ${v}`
+      if (Math.abs(v) > 0.1 && v != old.axes[i]) {
+        str = AXES[i] + ":" + (+ v)
       }
     })
     return str
@@ -163,3 +170,37 @@ window.addEventListener("gamepadconnected", (e) => {
   }, pollInterval)
 })
 
+
+const AXES = {
+  0: 0x00, //ABS_X
+  1: 0x01, //ABS_Y
+  2: 0x03, //ABS_RX
+  3: 0x04, //ABS_RY
+}
+
+
+const INPUTH = {
+  // Face buttons
+  0: 0x130, //BTN_SOUTH
+  1: 0x131, //BTN_EAST
+  2: 0x134, //BTN_WEST
+  3: 0x133, //BTN_NORTH
+
+  4: 0x136, //BTN_TL
+  5: 0x137, //BTN_TR
+  6: 0x138, //BTN_TL2
+  7: 0x139, //BTN_TR2
+
+  8: 0x13a, //BTN_SELECT
+  9: 0x13b, //BTN_START
+
+  10: 0x13d, //BTN_THUMBL
+  11: 0x13e, //BTN_THUMBR
+
+  12: 0x220, //BTN_DPAD_UP
+  13: 0x221, //BTN_DPAD_DOWN
+  14: 0x222, //BTN_DPAD_LEFT
+  15: 0x223, //BTN_DPAD_RIGHT
+
+  16: 0x13c, //BTN_MODE TODO: double check if that's what it actually evals to, doing this on a mac
+}
