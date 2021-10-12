@@ -2,6 +2,10 @@
 
 const url = "http://127.0.0.1:8080/"
 
+const remoteStream = new MediaStream();
+const remoteVideo = document.querySelector('#video');
+remoteVideo.srcObject = remoteStream;
+
 async function getOffer() {
   let response = await fetch(url + "offer", {
     method: "GET",
@@ -63,9 +67,20 @@ peerConnection.addEventListener('icecandidate', event => {
   }
 });
 
+let dataChannel
+
 peerConnection.addEventListener('connectionstatechange', state => {
   console.log(`Connection state changed to ${peerConnection.connectionState}`)
 });
+
+peerConnection.addEventListener('datachannel', (ev) => {
+  console.log("Data channel open!")
+  console.log(ev.channel)
+  dataChannel = ev.channel
+  dataChannel.addEventListener("open", () => {
+    console.log("Data channel open!")
+  });
+})
 
 getOffer().then((offer) => {
   console.log(offer.sdp)
@@ -79,10 +94,7 @@ getOffer().then((offer) => {
   )
 })
 
-const remoteStream = new MediaStream();
-const remoteVideo = document.querySelector('#video');
-remoteVideo.srcObject = remoteStream;
-console.log("Added remote source")
+
 
 // Gamepad stuff
 
@@ -96,32 +108,41 @@ class SimpleGP {
   }
 
   compareButtons (old) {
+    let str
     this.buttons.map((v, i) => {
       if (v != old.buttons[i]) {
-        console.log(`Button ${i}: ${v}`)
+        str = `Button ${i}: ${v}`
       }
     })
+    return str
   }
 
   compareAxes (old) {
+    let str
     this.axes.map((v, i) => {
-      if (Math.abs(v) > 0.1 && v != old.axes[i]) {
-        console.log(`Axis ${i}: ${v}`)
+      if (Math.abs(v) > 0.05 && v != old.axes[i]) {
+        str = `Axis ${i}: ${v}`
       }
     })
+    return str
   }
 
   compare (old) {
-    this.compareAxes(old)
-    this.compareButtons(old)
+    let data = this.compareAxes(old)
+    if (!data) {
+      return this.compareButtons(old)
+    }
+    return data
   }
 }
 
 const POLL_RATE = 250 // Hz
 const pollInterval = 1 / POLL_RATE * 1000
 
+
 window.addEventListener("gamepadconnected", (e) => {
   console.log(`Gamepad ${e.gamepad.id} connected!`)
+  dataChannel.send(e.gamepad.id)
 
   let ogp = navigator.getGamepads()[e.gamepad.index]
   let oldGP = new SimpleGP(ogp.buttons, ogp.axes)
@@ -130,11 +151,15 @@ window.addEventListener("gamepadconnected", (e) => {
     let gamep = navigator.getGamepads()[e.gamepad.index]
     var GP = new SimpleGP(gamep.buttons, gamep.axes)
 
-    if (JSON.stringify(oldGP) != JSON.stringify(GP)) {
-      GP.compare(oldGP)
+    data = GP.compare(oldGP)
+    if (data) {
+      console.log(data)
+      dataChannel.send(data)
     }
+
 
     oldGP = GP // This
 
-  }, pollInterval * 10)
+  }, pollInterval)
 })
+
