@@ -1,6 +1,7 @@
 
 
-const url = "http://127.0.0.1:8080/"
+// const url = "http://127.0.0.1:8080/"
+const url = "http://10.211.55.14:8080/"
 
 const remoteStream = new MediaStream();
 const remoteVideo = document.querySelector('#video');
