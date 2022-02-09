@@ -22,7 +22,7 @@ The reference implementation is used to transport input data over a WebRTC data 
 <a id="org857a368"></a>
 
 ## Specification
-
+```
  0                   1                   2                   3
  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2
  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -30,7 +30,7 @@ The reference implementation is used to transport input data over a WebRTC data 
  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  |                             Value                             |
  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
+```
 
 EV Type: specifices the type of input event, the values can be as follows:
     0x00: EV<sub>SYN</sub>
