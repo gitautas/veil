@@ -33,49 +33,49 @@ The reference implementation is used to transport input data over a WebRTC data 
 ```
 
 EV Type: specifices the type of input event, the values can be as follows:
-    0x00: EV<sub>SYN</sub>
-    0x01: EV<sub>KEY</sub>
-    0x02: EV<sub>REL</sub>
-    0x03: EV<sub>ABS</sub>
-    0x04: EV<sub>MSC</sub>
-    0x05: EV<sub>SW</sub>
-    0x11: EV<sub>LED</sub>
-    0x12: EV<sub>SND</sub>
-    0x14: EV<sub>REP</sub>
-    0x15: EV<sub>FF</sub>
-    0x16: EV<sub>PWR</sub>
-    0x17: EV<sub>FF</sub><sub>STATUS</sub>
-    0x1f: EV<sub>MAX</sub>
-    0x20: EV<sub>CNT</sub>
+    0x00: EV_SYN
+    0x01: EV_KEY
+    0x02: EV_REL
+    0x03: EV_ABS
+    0x04: EV_MSC
+    0x05: EV_SW
+    0x11: EV_LED
+    0x12: EV_SND
+    0x14: EV_REP
+    0x15: EV_FF
+    0x16: EV_PWR
+    0x17: EV_FF_STATUS
+    0x1f: EV_MAX
+    0x20: EV_CNT
 
 IEC: The input event code to send, refer to input-event-codes.h for a full list, the important ones for gaming are as follows:
-    0x00: ABS<sub>X</sub>          
-    0x01: ABS<sub>Y</sub>          
-    0x03: ABS<sub>RX</sub>         
-    0x04: ABS<sub>RY</sub>         
+    0x00: ABS_X          
+    0x01: ABS_Y          
+    0x03: ABS_RX         
+    0x04: ABS_RY         
 
-0x130: BTN<sub>SOUTH</sub>      
-0x131: BTN<sub>EAST</sub>       
-0x134: BTN<sub>WEST</sub>       
-0x133: BTN<sub>NORTH</sub>      
+0x130: BTN_SOUTH      
+0x131: BTN_EAST       
+0x134: BTN_WEST       
+0x133: BTN_NORTH      
 
-0x136: BTN<sub>TL</sub>         
-0x137: BTN<sub>TR</sub>         
-0x138: BTN<sub>TL2</sub>        
-0x139: BTN<sub>TR2</sub>        
+0x136: BTN_TL         
+0x137: BTN_TR         
+0x138: BTN_TL2        
+0x139: BTN_TR2        
 
-0x13a: BTN<sub>SELECT</sub>     
-0x13b: BTN<sub>START</sub>      
+0x13a: BTN_SELECT     
+0x13b: BTN_START      
 
-0x13d: BTN<sub>THUMBL</sub>     
-0x13e: BTN<sub>THUMBR</sub>     
+0x13d: BTN_THUMBL     
+0x13e: BTN_THUMBR     
 
-0x220: BTN<sub>DPAD</sub><sub>UP</sub>    
-0x221: BTN<sub>DPAD</sub><sub>DOWN</sub>  
-0x222: BTN<sub>DPAD</sub><sub>LEFT</sub>  
-0x223: BTN<sub>DPAD</sub><sub>RIGHT</sub> 
+0x220: BTN_DPAD_UP    
+0x221: BTN_DPAD_DOWN  
+0x222: BTN_DPAD_LEFT  
+0x223: BTN_DPAD_RIGHT 
 
-0x13c: BTN<sub>MODE</sub>       
+0x13c: BTN_MODE       
 
 Value: The float32 axis value for the ABS event, in this case used for gamepad axes.
 
