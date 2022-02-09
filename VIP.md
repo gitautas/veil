@@ -53,28 +53,22 @@ IEC: The input event code to send, refer to input-event-codes.h for a full list,
 - 0x01: ABS_Y          
 - 0x03: ABS_RX         
 - 0x04: ABS_RY         
-
 - 0x130: BTN_SOUTH      
 - 0x131: BTN_EAST       
 - 0x134: BTN_WEST       
 - 0x133: BTN_NORTH      
- 
 - 0x136: BTN_TL         
 - 0x137: BTN_TR         
 - 0x138: BTN_TL2        
 - 0x139: BTN_TR2        
-
 - 0x13a: BTN_SELECT     
 - 0x13b: BTN_START      
- 
 - 0x13d: BTN_THUMBL     
 - 0x13e: BTN_THUMBR     
- 
 - 0x220: BTN_DPAD_UP    
 - 0x221: BTN_DPAD_DOWN  
 - 0x222: BTN_DPAD_LEFT  
 - 0x223: BTN_DPAD_RIGHT 
-
 - 0x13c: BTN_MODE       
 
 Value: The float32 axis value for the ABS event, in this case used for gamepad axes.
