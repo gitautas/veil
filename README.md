@@ -35,3 +35,5 @@ This project is split up into several components, written in different languages
 
 This architecture is still very early and is intended to change.
 
+![architecture diagram](veil.svg "architecture diagram")
+
