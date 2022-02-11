@@ -32,7 +32,7 @@ This project is split up into several components, written in different languages
 -   Ymir: The main REST API written in V?, this does the WebRTC signalling between Kara and Helgi, manages the game instances. This is still TODO.
 -   [Sigrun:](https://github.com/gitautas/veil-sigrun) this is the program that is responsible for capturing and encoding a GPU framebuffer. It currently only targets NVidia based systems due to the simplicity of NvFBC and NvENC SDKs, in theory one should be able to replicate this functionality using AMD&rsquo;s AMF framework, but it is considerably worse documented and whether the required APIs are exposed I&rsquo;m still unsure, if I have more time and resources I could research this a bit more, but currently it is not a priority.
 -   Sif: This is a shell script? that will manage pipewire loopback devices, encode them into opus and send them over to Helgi over named pipes. This is still TODO.
--   [Kara:](https://github.com/gitautas/veil-kara) This is a react? app that functions as the main client. It negotiates a stream, receives the video and audio streams, reads the gamepad data, serializes it and sends it over to Helgi. This is currently a very minimal implementation written in pure javascript.
+-   [Kara:](https://github.com/gitautas/veil-kara) This is a vue app that functions as the main client. It negotiates a stream, receives the video and audio streams, reads the gamepad data, serializes it and sends it over to Helgi. This is currently a very minimal implementation written in pure javascript.
 
 This architecture is still very early and is intended to change.
 
