@@ -1,30 +1,31 @@
-// import { VIP, EventType } from "./VIP"
+import { VIP, EventType } from "./VIP"
 
 export default class VeilGamepad {
     gamepad: Gamepad
+    oldGamepad: Gamepad
     pollInterval: number
     deadZone: number
     dataChannel: RTCDataChannel
-    oldGamepad: Gamepad
 
     private compareButtons() {
-        if (this.gamepad.buttons != this.oldGamepad.buttons) {
-            console.log(this.oldGamepad.buttons)
-        }
         this.gamepad.buttons.map((v, i) => {
-            if (v != this.oldGamepad.buttons[i]) {
-                console.log(v)
+            if (v.pressed != this.oldGamepad.buttons[i].pressed) {
+                let data: Blob
+                if (v.pressed) {
+                    data = VIP.marshal(EventType.ButtonDown, i)
+                } else {
+                    data = VIP.marshal(EventType.ButtonUp, i)
+                }
+                // this.dataChannel.send(data)
             }
         })
     }
 
     private compareAxes() {
-        if (this.gamepad.axes != this.oldGamepad.axes) {
-            console.log(this.oldGamepad.axes)
-        }
         this.gamepad.axes.map((v, i) => {
             if (Math.abs(v) > this.deadZone && v != this.oldGamepad.axes[i]) {
-                console.log(v)
+                const data: Blob = VIP.marshal(EventType.Axis, i, v)
+                // this.dataChannel.send(data)
             }
         })
     }
@@ -44,7 +45,7 @@ export default class VeilGamepad {
         }, this.pollInterval)
     }
 
-    constructor(gamepad: Gamepad, dataChannel: RTCDataChannel, pollRateHz = 2, deadZone = 0.05) {
+    constructor(gamepad: Gamepad, dataChannel: RTCDataChannel, pollRateHz = 133, deadZone = 0.10) {
         this.gamepad = gamepad
         this.oldGamepad = gamepad
         this.pollInterval = 1 / pollRateHz * 1000 // the interval of time between polls
