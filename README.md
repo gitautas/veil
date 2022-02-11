@@ -26,7 +26,7 @@ This project is split up into several components, written in different languages
 
 -   [Helgi:](https://github.com/gitautas/veil-helgi) This is the the main WebRTC server written in Go, it does a few things:
     1.  Negotiates and establishes a WebRTC connection with the client
-    2.  Packetizes the encoded audio and video frames that are sent by Sigrun and Sif through named pipes to Kara
+    2.  Packetizes the encoded audio and video frames that are sent by Sigrun and Sif through named pipes and sends them to the client. 
     3.  Streams the packets to the client
     4.  Deserializes the [VIP](./VIP.md) packets sent by the client and replays them using a uinput module
 -   Ymir: The main REST API written in V?, this does the WebRTC signalling between Kara and Helgi, manages the game instances. This is still TODO.
