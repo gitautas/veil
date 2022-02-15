@@ -25,3 +25,6 @@ So to create a virtual display I'd want to use xvfb and this seems to work
 Xvfb :1 -screen 0 2560x1600x24+32 -fbdir /var/tmp &
 export DISPLAY=:1
 #+END_SRC
+
+* NVidia patch
+[[https://github.com/keylase/nvidia-patch][This patch] is required to use the NvFBC library on consumer GPUs.
