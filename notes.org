@@ -27,4 +27,4 @@ export DISPLAY=:1
 #+END_SRC
 
 * NVidia patch
-[[https://github.com/keylase/nvidia-patch][This patch] is required to use the NvFBC library on consumer GPUs.
+[[https://github.com/keylase/nvidia-patch][This patch]] is required to use the NvFBC library on consumer GPUs.
