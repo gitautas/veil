@@ -1,0 +1,27 @@
+#+TITLE: Notes
+
+* Distro choice
+The main idea here is to use something that is /mostly/ stable, has all the necessary packages and supports all the necessary things.
+
+Here's a preliminary list of stuff that will be needed to run veil:
+    - docker(-compose)
+    - golang toolchain
+    - node.js
+    - v toolchain
+    - nvidia drivers
+    - steam
+    - x11 and opengl or libcuda (depends on the sigrun implementation)
+    - pipewire
+    - libopus
+
+Most likely a lot of other stuff, but this will probably be all handled in a dockerfile.
+
+* Running Steam without a window manager
+[[https://github.com/thor27/steam-login/][This repo]] has a login manager to use for this purpose.
+
+* Virtual display
+So to create a virtual display I'd want to use xvfb and this seems to work
+#+BEGIN_SRC shell
+Xvfb :1 -screen 0 2560x1600x24+32 -fbdir /var/tmp &
+export DISPLAY=:1
+#+END_SRC
