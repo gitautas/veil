@@ -26,5 +26,7 @@ Xvfb :1 -screen 0 2560x1600x24+32 -fbdir /var/tmp &
 export DISPLAY=:1
 #+END_SRC
 
+Also is a very good idea to try testing with wayland, with either weston or sway in headless mode.
+
 * NVidia patch
 [[https://github.com/keylase/nvidia-patch][This patch]] is required to use the NvFBC library on consumer GPUs.
