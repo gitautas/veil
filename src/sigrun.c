@@ -34,21 +34,6 @@ typedef NVENCSTATUS(NVENCAPI *PFNNVENCODEAPICREATEINSTANCEPROC)(
 enum codecType { CODEC_H264, CODEC_HEVC };
 
 /**
- * Prints usage information.
- */
-static void usage(const char *pname) {
-  printf("Usage: %s [options]\n", pname);
-  printf("\n");
-  printf("Options:\n");
-  printf("  --help|-h         This message\n");
-  printf("  --size|-s <w>x<h> Size of the captured frames\n");
-  printf("                    (default: size of the framebuffer)\n");
-  printf("  --codec|-c <str>  Codec to use\n");
-  printf("                    Can be 'h264' or 'hevc'\n");
-  printf("                    (default: 'h264')\n");
-}
-
-/**
  * Creates an OpenGL context.
  *
  * This context will then be passed to NvFBC for its internal use.
@@ -186,15 +171,10 @@ fail:
  * Captures frames, encodes them and writes them out to a file (output.h264)
  */
 int main(int argc, char *argv[]) {
-  static struct option longopts[] = {{"frames", required_argument, NULL, 'f'},
-                                     {"size", required_argument, NULL, 's'},
-                                     {"codec", required_argument, NULL, 'c'},
-                                     {"output", required_argument, NULL, 'o'},
-                                     {NULL, 0, NULL, 0}};
-
-  int opt, ret;
   unsigned int n = 0, i;
   NVFBC_SIZE frameSize = {0, 0};
+
+  FILE *outPipe;
 
   void *libNVFBC = NULL, *libEnc = NULL;
 
@@ -217,31 +197,11 @@ int main(int argc, char *argv[]) {
   /*
    * Parse the command line.
    */
-  while ((opt = getopt_long(argc, argv, "hf:s:c:o:", longopts, NULL)) != -1) {
-    switch (opt) {
-    case 's':
-      ret = sscanf(optarg, "%ux%u", &frameSize.w, &frameSize.h);
-      if (ret != 2) {
-        fprintf(stderr, "Invalid size format: '%s'\n", optarg);
-        return EXIT_FAILURE;
-      }
-      break;
-    case 'c':
-      if (!strcasecmp(optarg, "h264")) {
-        codec = CODEC_H264;
-      } else if (!strcasecmp(optarg, "hevc")) {
-        codec = CODEC_HEVC;
-      } else {
-        fprintf(stderr, "Invalid codec: '%s'\n", optarg);
-        return EXIT_FAILURE;
-      }
-      break;
-    case 'h':
-    default:
-      usage(argv[0]);
-      return EXIT_SUCCESS;
-    }
+  if (argc < 2) {
+    fprintf(stderr, "No named pipe specified\n");
+    return EXIT_FAILURE;
   }
+  outPipe = fopen(argv[1], "w");
 
   /*
    * Dynamically load the NvFBC library.
@@ -628,7 +588,7 @@ int main(int argc, char *argv[]) {
       encStatus = pEncFn.nvEncLockBitstream(encoder, &lockParams);
       if (encStatus == NV_ENC_SUCCESS) {
         bufferSize = lockParams.bitstreamSizeInBytes;
-        fwrite(lockParams.bitstreamBufferPtr, 1, bufferSize, stdout);
+        fwrite(lockParams.bitstreamBufferPtr, 1, bufferSize, outPipe);
 
         encStatus = pEncFn.nvEncUnlockBitstream(encoder, outputBuffer);
         if (encStatus != NV_ENC_SUCCESS) {
