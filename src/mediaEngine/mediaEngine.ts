@@ -6,12 +6,14 @@ export default class MediaEngine {
 
     public async negotiate(): Promise<void> {
         const offer: RTCSessionDescriptionInit = await this.getOffer()
-        this.peerConnection.setRemoteDescription(offer)
+        console.log(offer)
+        await this.peerConnection.setRemoteDescription(offer)
 
         const answer: RTCSessionDescriptionInit = await this.peerConnection.createAnswer()
-        this.peerConnection.setLocalDescription(answer)
+        console.log(answer)
+        await this.peerConnection.setLocalDescription(answer)
 
-        this.sendAnswer(answer)
+        await this.sendAnswer(answer)
 
         this.peerConnection.addEventListener("iceconnectionstatechange", () => {
             if (this.peerConnection.iceConnectionState == "checking") {
@@ -36,6 +38,7 @@ export default class MediaEngine {
         })
 
         this.peerConnection.addEventListener("datachannel", (event) => { //TODO: make sure this doesn't fire when constructing the class
+            console.log("reee")
             this.dataChannel = event.channel
         })
     }
@@ -49,7 +52,7 @@ export default class MediaEngine {
     }
 
     private async sendAnswer(offer: RTCSessionDescriptionInit): Promise<void> {
-        fetch(this.ymirAddr + "/offer", {
+        fetch(this.ymirAddr + "/answer", {
             method: "POST",
             body: JSON.stringify(offer)
         })
