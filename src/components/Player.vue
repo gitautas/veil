@@ -1,7 +1,5 @@
 <template>
-  <video autoplay muted>
-    <source src="video.mp4">
-  </video>
+  <video autoplay muted />
 </template>
 
 <script lang="ts">
@@ -9,9 +7,12 @@ import { Options, Vue } from 'vue-class-component'
 import MediaEngine from '../mediaEngine/mediaEngine'
 import VeilGamepad from '../gamepad/gamepad'
 
-let mediaEngine = new MediaEngine("0")
+let mediaEngine = new MediaEngine("http://192.168.1.105:4000")
 console.log(mediaEngine)
- // mediaEngine.negotiate()
+ mediaEngine.negotiate().catch((err) => {
+     console.log(err)
+     console.log(mediaEngine)
+ });
 
  window.addEventListener("gamepadconnected", (event: any) => {
      console.log("Gamepad connected");

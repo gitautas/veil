@@ -17,8 +17,6 @@ export interface InputEvent {
 
 }
 
-
-
 export class VIP {
     public static marshal(ev: EventType, ie: number, value = 0.00): Blob {
         const evBuffer: Int16Array = Int16Array.from([this.EventCode[ev]])
