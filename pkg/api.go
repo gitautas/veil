@@ -10,19 +10,20 @@ import (
 
 	generated "ymir/pkg/pb"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Ymir struct {
-	port int
-    helgiAddr string
+	port      int
+	helgiAddr string
 	rpcClient generated.WebRTCSignallingClient
 	ginEngine *gin.Engine
 }
 
-func NewYmir(port int, helgiAddr string) (*Ymir, error){
+func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 	conn, err := grpc.Dial(helgiAddr, grpc.WithInsecure())
 	if err != nil {
 		return nil, err
@@ -31,6 +32,7 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error){
 	helgi := generated.NewWebRTCSignallingClient(conn)
 
 	engine := gin.Default()
+	engine.Use(cors.Default())
 	engine.GET("/offer", func(c *gin.Context) {
 		offer, err := helgi.GetOffer(context.TODO(), &emptypb.Empty{})
 		if err != nil {
@@ -79,10 +81,12 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error){
 		go func() {
 			for {
 				candidate, err := candidateClient.Recv()
-				if err == io.EOF {
-					c.JSON(http.StatusOK, nil)
-				}
 				if err != nil {
+					if err == io.EOF {
+						c.Status(http.StatusOK)
+						return
+					}
+
 					c.JSON(http.StatusInternalServerError, err)
 					fmt.Println(err)
 					return
@@ -112,7 +116,7 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error){
 	})
 
 	return &Ymir{
-		port: port,
+		port:      port,
 		helgiAddr: helgiAddr,
 		rpcClient: helgi,
 		ginEngine: engine,
