@@ -45,16 +45,19 @@ export default class MediaEngine {
   }
 
   private async getCandidates(): Promise<void> {
+    console.log("GET /candidate");
     fetch(this.ymirAddr + "/candidate", {
       method: "GET",
     }).then(async (response) => {
-      if (response.status > 400) {
-        throw "Problem.";
+      console.log(response);
+      if (response.status == 102) {
+        this.getCandidates();
       }
-      const candidate: RTCIceCandidate = await response.json();
-      this.peerConnection.addIceCandidate(candidate);
+
       if (response.status == 100) {
-        this.getCandidates(); // recurse until the server send out all candidates
+        const candidate: RTCIceCandidate = await response.json();
+        this.peerConnection.addIceCandidate(candidate);
+        this.getCandidates();
       }
     });
   }
@@ -65,85 +68,50 @@ export default class MediaEngine {
     this.peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
-    // if (this.peerConnection) {
-    //   console.log("Adding event listeners...");
-
-    //   this.peerConnection.addEventListener(
-    //     "connectionstatechange",
-    //     (event: Event) => {
-    //       console.log(`Connection state changed to ${event}`);
-    //     }
-    //   );
-
-    //   this.peerConnection.addEventListener(
-    //     "onconnectionstatechange",
-    //     (event: Event) => {
-    //       console.log(`Connection state changed to ${event}`);
-    //     }
-    //   );
-
-    //   this.peerConnection.addEventListener(
-    //     "oniceconnectionstatechange",
-    //     (event: any) => {
-    //       console.log(`ICE connection state changed to ${event.state}`);
-    //       if (this.peerConnection.iceConnectionState == "checking") {
-    //         this.getCandidates();
-    //       }
-    //     }
-    //   );
-
-    //   this.peerConnection.addEventListener("track", (event: RTCTrackEvent) => {
-    //     this.remoteStream.addTrack(event.track);
-    //   });
-
-    //   this.peerConnection.addEventListener(
-    //     "icecandidate",
-    //     (event: RTCPeerConnectionIceEvent) => {
-    //       if (event.candidate != null) {
-    //         this.sendIceCandidate(event.candidate);
-    //       }
-    //     }
-    //   );
-
-    //   this.peerConnection.addEventListener(
-    //     "datachannel",
-    //     (event: RTCDataChannelEvent) => {
-    //       this.dataChannel = event.channel;
-    //     }
-    //   );
-    // }
-
     if (this.peerConnection) {
-      console.log("Adding event listeners...");
-
-      this.peerConnection.onconnectionstatechange = (event: Event) => {
-        console.log(`Connection state changed to ${event}`);
-      };
-
-      this.peerConnection.onconnectionstatechange = (event: Event) => {
-        console.log(`Connection state changed to ${event}`);
-      };
-
-      this.peerConnection.oniceconnectionstatechange = (event: any) => {
-        console.log(`ICE connection state changed to ${event.state}`);
-      };
-
-      this.peerConnection.ontrack = (event: RTCTrackEvent) => {
-        this.remoteStream.addTrack(event.track);
-      };
-
-      this.peerConnection.onicecandidate = (
-        event: RTCPeerConnectionIceEvent
-      ) => {
-        if (event.candidate != null) {
-          this.sendIceCandidate(event.candidate);
+      this.peerConnection.addEventListener(
+        "connectionstatechange",
+        (event: Event) => {
+          console.log(`Connection state changed to ${event}`);
         }
-      };
+      );
 
-      this.peerConnection.ondatachannel = (event: RTCDataChannelEvent) => {
-        this.dataChannel = event.channel;
-      };
+      this.peerConnection.addEventListener(
+        "onconnectionstatechange",
+        (event: Event) => {
+          console.log(`Connection state changed to ${event}`);
+        }
+      );
+
+      this.peerConnection.addEventListener(
+        "oniceconnectionstatechange",
+        (event: any) => {
+          console.log(`ICE connection state changed to ${event.state}`);
+          if (this.peerConnection.iceConnectionState == "checking") {
+            this.getCandidates();
+          }
+        }
+      );
+
+      this.peerConnection.addEventListener("track", (event: RTCTrackEvent) => {
+        this.remoteStream.addTrack(event.track);
+      });
+
+      this.peerConnection.addEventListener(
+        "icecandidate",
+        (event: RTCPeerConnectionIceEvent) => {
+          if (event.candidate != null) {
+            this.sendIceCandidate(event.candidate);
+          }
+        }
+      );
+
+      this.peerConnection.addEventListener(
+        "datachannel",
+        (event: RTCDataChannelEvent) => {
+          this.dataChannel = event.channel;
+        }
+      );
     }
-   console.log(this.peerConnection);
   }
 }
