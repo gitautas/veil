@@ -17,10 +17,12 @@ import (
 )
 
 type Ymir struct {
-	port      int
-	helgiAddr string
-	rpcClient generated.WebRTCSignallingClient
-	ginEngine *gin.Engine
+	port            int
+	helgiAddr       string
+	rpcClient       generated.WebRTCSignallingClient
+	helgiCandidates []*generated.ICECandidate
+	helgiEOF        bool
+	ginEngine       *gin.Engine
 }
 
 func NewYmir(port int, helgiAddr string) (*Ymir, error) {
@@ -30,6 +32,8 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 	}
 
 	helgi := generated.NewWebRTCSignallingClient(conn)
+	candidates := []*generated.ICECandidate{}
+	eof := false
 
 	engine := gin.Default()
 	engine.Use(cors.Default())
@@ -67,10 +71,6 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 			return
 		}
 
-		c.JSON(http.StatusOK, nil)
-	})
-
-	engine.GET("/candidate", func(c *gin.Context) {
 		candidateClient, err := helgi.GetCandidate(context.TODO(), &emptypb.Empty{})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, err)
@@ -79,21 +79,40 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 		}
 
 		go func() {
+			fmt.Println("Starting candidate thread")
 			for {
 				candidate, err := candidateClient.Recv()
 				if err != nil {
 					if err == io.EOF {
-						c.Status(http.StatusOK)
+						eof = true
 						return
 					}
 
-					c.JSON(http.StatusInternalServerError, err)
 					fmt.Println(err)
 					return
 				}
-				c.JSON(http.StatusContinue, candidate)
+				fmt.Println("Got a candidate")
+				candidates = append(candidates, candidate)
 			}
 		}()
+
+		c.JSON(http.StatusOK, nil)
+	})
+
+	engine.GET("/candidate", func(c *gin.Context) {
+		fmt.Println("GET /candidate")
+		fmt.Println(candidates)
+		if eof && len(candidates) == 0 {
+			c.Status(http.StatusOK)
+			return
+		}
+		if len(candidates) > 0 {
+			candidate := candidates[0]
+			candidates = candidates[1:]
+			c.JSON(http.StatusProcessing, candidate)
+			return
+		}
+		c.Status(http.StatusContinue)
 	})
 
 	engine.POST("/candidate", func(c *gin.Context) {
@@ -112,14 +131,14 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 			return
 		}
 		_, err = helgi.SendCandidate(context.TODO(), candidate)
-
 	})
 
 	return &Ymir{
-		port:      port,
-		helgiAddr: helgiAddr,
-		rpcClient: helgi,
-		ginEngine: engine,
+		helgiCandidates: candidates,
+		port:            port,
+		helgiAddr:       helgiAddr,
+		rpcClient:       helgi,
+		ginEngine:       engine,
 	}, nil
 }
 
