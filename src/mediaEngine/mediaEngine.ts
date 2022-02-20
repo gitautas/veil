@@ -18,8 +18,6 @@ export default class MediaEngine {
 
     await this.sendAnswer(answer);
     this.getCandidates();
-
-    console.log(this.peerConnection);
   }
 
   private async getOffer(): Promise<RTCSessionDescriptionInit> {
@@ -45,19 +43,18 @@ export default class MediaEngine {
   }
 
   private async getCandidates(): Promise<void> {
-    console.log("GET /candidate");
     fetch(this.ymirAddr + "/candidate", {
       method: "GET",
-    }).then(async (response) => {
-      console.log(response);
-      if (response.status == 102) {
-        this.getCandidates();
+    }).then(async (response: Response) => {
+      if (response.status == 100) {
+        await this.getCandidates();
       }
 
-      if (response.status == 100) {
+      if (response.status == 202) {
         const candidate: RTCIceCandidate = await response.json();
-        this.peerConnection.addIceCandidate(candidate);
-        this.getCandidates();
+        console.log(candidate);
+        await this.peerConnection.addIceCandidate(candidate);
+        await this.getCandidates();
       }
     });
   }
@@ -77,9 +74,9 @@ export default class MediaEngine {
       );
 
       this.peerConnection.addEventListener(
-        "onconnectionstatechange",
+        "iceconnectionstatechange",
         (event: Event) => {
-          console.log(`Connection state changed to ${event}`);
+          console.log(`ICE connection state changed to ${event}`);
         }
       );
 
