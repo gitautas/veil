@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// The above is due to peerConnection using weird Event types that aren't actually Events.
 export default class MediaEngine {
   ymirAddr: string;
   peerConnection: RTCPeerConnection;
@@ -15,6 +17,8 @@ export default class MediaEngine {
     await this.peerConnection.setLocalDescription(answer);
 
     await this.sendAnswer(answer);
+
+    console.log(this.peerConnection);
   }
 
   private async getOffer(): Promise<RTCSessionDescriptionInit> {
@@ -57,37 +61,43 @@ export default class MediaEngine {
   constructor(address: string) {
     this.ymirAddr = address;
     this.remoteStream = new MediaStream();
-    const peerConnection = new RTCPeerConnection({
+    this.peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
-    peerConnection.addEventListener("iceconnectionstatechange", (state) => {
-      console.log(`ICE connection state changed to ${state}`);
-      if (this.peerConnection.iceConnectionState == "checking") {
-        this.getCandidates();
-      }
-    });
+    if (this.peerConnection) {
+      console.log("Adding event listeners...");
 
-    peerConnection.addEventListener("connectionstatechange", (state) => {
-      console.log(`Connection state changed to ${state}`);
-    });
+      this.peerConnection.onconnectionstatechange = (event: Event) => {
+        console.log(`Connection state changed to ${event}`);
+      };
 
-    peerConnection.addEventListener("track", (event) => {
-      this.remoteStream.addTrack(event.track);
-    });
+      this.peerConnection.onconnectionstatechange = (event: Event) => {
+        console.log(`Connection state changed to ${event}`);
+      };
 
-    peerConnection.addEventListener("icecandidate", (event) => {
-      if (event.candidate != null) {
-        this.sendIceCandidate(event.candidate);
-      }
-    });
+      this.peerConnection.oniceconnectionstatechange = (event: any) => {
+        console.log(`ICE connection state changed to ${event.state}`);
+        if (this.peerConnection.iceConnectionState == "checking") {
+          this.getCandidates();
+        }
+      };
 
-    peerConnection.addEventListener("datachannel", (event) => {
-      //TODO: make sure this doesn't fire when constructing the class
-      console.log("reee");
-      this.dataChannel = event.channel;
-    });
+      this.peerConnection.ontrack = (event: RTCTrackEvent) => {
+        this.remoteStream.addTrack(event.track);
+      };
 
-    this.peerConnection = peerConnection;
+      this.peerConnection.onicecandidate = (
+        event: RTCPeerConnectionIceEvent
+      ) => {
+        if (event.candidate != null) {
+          this.sendIceCandidate(event.candidate);
+        }
+      };
+
+      this.peerConnection.ondatachannel = (event: RTCDataChannelEvent) => {
+        this.dataChannel = event.channel;
+      };
+    }
   }
 }
