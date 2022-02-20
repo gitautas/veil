@@ -6,7 +6,8 @@
 import MediaEngine from "../mediaEngine/mediaEngine";
 // import VeilGamepad from "../gamepad/gamepad";
 
-const mediaEngine = new MediaEngine("http://192.168.1.105:4000");
+ // const mediaEngine = new MediaEngine("http://192.168.1.105:4000");
+const mediaEngine = new MediaEngine("http://0.0.0.0:4000");
 mediaEngine.negotiate().catch((err) => {
   console.log("errored");
   console.log(err);
