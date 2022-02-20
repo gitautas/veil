@@ -1,30 +1,21 @@
 <template>
-  <Player/>
+  <Player />
 </template>
 
-<script lang="ts">
-import { Options, Vue } from 'vue-class-component';
-import Player from './components/Player.vue';
-
-@Options({
-  components: {
-    Player,
-  },
-})
-export default class App extends Vue {}
+<script setup lang="ts">
+import Player from "./components/Player.vue";
 </script>
 
-<style lang="scss">
- body {
-   margin: 0;
-   overflow: hidden;
- }
- #app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin: 0;
- }
+<style lang="sass">
+body
+  margin: 0
+  overflow: hidden
+
+#app
+  font-family: Avenir, Helvetica, Arial, sans-serif
+  -webkit-font-smoothing: antialiased
+  -moz-osx-font-smoothing: grayscale
+  text-align: center
+  color: #2c3e50
+  margin-top: 60px
 </style>
