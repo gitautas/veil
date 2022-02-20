@@ -38,7 +38,7 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 	engine := gin.Default()
 	engine.Use(cors.Default())
 	engine.GET("/offer", func(c *gin.Context) {
-		offer, err := helgi.GetOffer(context.TODO(), &emptypb.Empty{})
+		offer, err := helgi.GetOffer(context.TODO(), new(emptypb.Empty))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, err)
 			fmt.Println(err)
@@ -64,14 +64,14 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 			return
 		}
 
-		_, err = helgi.SendAnswer(context.TODO(), answer)
+		_, err = helgi.SendAnswer(c.Request.Context(), answer)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, err)
 			fmt.Println(err)
 			return
 		}
 
-		candidateClient, err := helgi.GetCandidate(context.TODO(), &emptypb.Empty{})
+		candidateClient, err := helgi.GetCandidate(context.Background(), new(emptypb.Empty))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, err)
 			fmt.Println(err)
@@ -89,6 +89,7 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 					}
 
 					fmt.Println(err)
+					fmt.Println("Errored on candidate thread")
 					return
 				}
 				fmt.Println("Got a candidate")
@@ -101,7 +102,6 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 
 	engine.GET("/candidate", func(c *gin.Context) {
 		fmt.Println("GET /candidate")
-		fmt.Println(candidates)
 		if eof && len(candidates) == 0 {
 			c.Status(http.StatusOK)
 			return
@@ -109,7 +109,9 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 		if len(candidates) > 0 {
 			candidate := candidates[0]
 			candidates = candidates[1:]
-			c.JSON(http.StatusProcessing, candidate)
+			fmt.Println(candidate)
+			c.JSON(http.StatusAccepted, candidate)
+			fmt.Println("Sent out the fucker")
 			return
 		}
 		c.Status(http.StatusContinue)
@@ -130,7 +132,7 @@ func NewYmir(port int, helgiAddr string) (*Ymir, error) {
 			fmt.Println(err)
 			return
 		}
-		_, err = helgi.SendCandidate(context.TODO(), candidate)
+		_, err = helgi.SendCandidate(c.Request.Context(), candidate)
 	})
 
 	return &Ymir{
