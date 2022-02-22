@@ -9,12 +9,16 @@ export default class MediaEngine {
   public async negotiate(): Promise<void> {
     const offer: RTCSessionDescriptionInit = await this.getOffer();
     console.log(offer.sdp);
-    await this.peerConnection.setRemoteDescription(offer);
+    await this.peerConnection.setRemoteDescription(offer).then(() => {
+      console.log("I HAVE ADDED THE FUCKING REMOTE DESCRIPTION");
+    });
 
     const answer: RTCSessionDescriptionInit =
       await this.peerConnection.createAnswer();
     console.log(answer.sdp);
-    await this.peerConnection.setLocalDescription(answer);
+    await this.peerConnection.setLocalDescription(answer).then(() => {
+      console.log("I HAVE ADDED THE FUCKING LOCAL DESCRIPTION");
+    });
 
     await this.sendAnswer(answer);
     this.getCandidates();
@@ -43,19 +47,25 @@ export default class MediaEngine {
   }
 
   private async getCandidates(): Promise<void> {
+    console.log("Getting candidates");
     fetch(this.ymirAddr + "/candidate", {
       method: "GET",
     }).then(async (response: Response) => {
-      if (response.status == 100) {
-        await this.getCandidates();
-      }
-
-      if (response.status == 202) {
-        const candidate: RTCIceCandidate = await response.json();
-        console.log(candidate);
-        await this.peerConnection.addIceCandidate(candidate);
-        console.log("Added candidate");
-        await this.getCandidates();
+      console.log(response.status);
+      switch (response.status) {
+        case 204: {
+          await new Promise((r) => setTimeout(r, 1000));
+          await this.getCandidates();
+          break;
+        }
+        case 202: {
+          const candidate: RTCIceCandidate = await response.json();
+          console.log(candidate);
+          await this.peerConnection.addIceCandidate(candidate);
+          console.log("Added candidate");
+          await this.getCandidates();
+          break;
+        }
       }
     });
   }
@@ -67,19 +77,17 @@ export default class MediaEngine {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
     if (this.peerConnection) {
-      this.peerConnection.addEventListener(
-        "connectionstatechange",
-        (event: any) => {
-          console.log(`Connection state changed to ${event.state}`);
-        }
-      );
+      this.peerConnection.addEventListener("connectionstatechange", () => {
+        console.log(
+          `Connection state changed to ${this.peerConnection.connectionState}`
+        );
+      });
 
-      this.peerConnection.addEventListener(
-        "iceconnectionstatechange",
-        (event: any) => {
-          console.log(`ICE connection state changed to ${event.state}`);
-        }
-      );
+      this.peerConnection.addEventListener("iceconnectionstatechange", () => {
+        console.log(
+          `ICE connection state changed to ${this.peerConnection.iceConnectionState}`
+        );
+      });
 
       this.peerConnection.addEventListener(
         "oniceconnectionstatechange",
