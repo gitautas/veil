@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/pion/webrtc/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -20,130 +21,148 @@ type Ymir struct {
 	port            int
 	helgiAddr       string
 	rpcClient       generated.WebRTCSignallingClient
-	helgiCandidates []*generated.ICECandidate
-	helgiEOF        bool
+	helgiCandidates []*webrtc.ICECandidate
+	iceEOF          bool
 	ginEngine       *gin.Engine
 }
 
 func NewYmir(port int, helgiAddr string) (*Ymir, error) {
-	conn, err := grpc.Dial(helgiAddr, grpc.WithInsecure())
-	if err != nil {
-		return nil, err
-	}
-
-	helgi := generated.NewWebRTCSignallingClient(conn)
-	candidates := []*generated.ICECandidate{}
-	eof := false
-
-	engine := gin.Default()
-	engine.Use(cors.Default())
-	engine.GET("/offer", func(c *gin.Context) {
-		offer, err := helgi.GetOffer(context.TODO(), new(emptypb.Empty))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err)
-			fmt.Println(err)
-			return
-		}
-
-		c.JSON(http.StatusOK, offer)
-	})
-
-	engine.POST("/answer", func(c *gin.Context) {
-		jAnswer, err := c.GetRawData()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err)
-			fmt.Println(err)
-			return
-		}
-
-		var answer *generated.SDP
-		err = json.Unmarshal(jAnswer, &answer)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err)
-			fmt.Println(err)
-			return
-		}
-
-		_, err = helgi.SendAnswer(c.Request.Context(), answer)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err)
-			fmt.Println(err)
-			return
-		}
-
-		candidateClient, err := helgi.GetCandidate(context.Background(), new(emptypb.Empty))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err)
-			fmt.Println(err)
-			return
-		}
-
-		go func() {
-			fmt.Println("Starting candidate thread")
-			for {
-				candidate, err := candidateClient.Recv()
-				if err != nil {
-					if err == io.EOF {
-						eof = true
-						return
-					}
-
-					fmt.Println(err)
-					fmt.Println("Errored on candidate thread")
-					return
-				}
-				fmt.Println("Got a candidate")
-				candidates = append(candidates, candidate)
-			}
-		}()
-
-		c.JSON(http.StatusOK, nil)
-	})
-
-	engine.GET("/candidate", func(c *gin.Context) {
-		fmt.Println("GET /candidate")
-		if eof && len(candidates) == 0 {
-			c.Status(http.StatusOK)
-			return
-		}
-		if len(candidates) > 0 {
-			candidate := candidates[0]
-			candidates = candidates[1:]
-			fmt.Println(candidate)
-			c.JSON(http.StatusAccepted, candidate)
-			fmt.Println("Sent out the fucker")
-			return
-		}
-		c.Status(http.StatusContinue)
-	})
-
-	engine.POST("/candidate", func(c *gin.Context) {
-		jCandidate, err := c.GetRawData()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err)
-			fmt.Println(err)
-			return
-		}
-
-		var candidate *generated.ICECandidate
-		err = json.Unmarshal(jCandidate, &candidate)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err)
-			fmt.Println(err)
-			return
-		}
-		_, err = helgi.SendCandidate(c.Request.Context(), candidate)
-	})
-
 	return &Ymir{
-		helgiCandidates: candidates,
+		helgiCandidates: []*webrtc.ICECandidate{},
 		port:            port,
 		helgiAddr:       helgiAddr,
-		rpcClient:       helgi,
-		ginEngine:       engine,
+		rpcClient:       nil,
+		ginEngine:       nil,
+		iceEOF:          false,
 	}, nil
 }
 
-func (y *Ymir) Serve() {
+func (y *Ymir) GetOffer(c *gin.Context) {
+	offer, err := y.rpcClient.GetOffer(context.TODO(), new(emptypb.Empty))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+		fmt.Println(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, offer)
+}
+
+func (y *Ymir) SendAnswer(c *gin.Context) {
+	jAnswer, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+		fmt.Println(err)
+		return
+	}
+
+	var answer *generated.SDP
+	err = json.Unmarshal(jAnswer, &answer)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+		fmt.Println(err)
+		return
+	}
+
+	_, err = y.rpcClient.SendAnswer(c.Request.Context(), answer)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+		fmt.Println(err)
+		return
+	}
+
+	candidateClient, err := y.rpcClient.GetCandidate(context.Background(), new(emptypb.Empty))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+		fmt.Println(err)
+		return
+	}
+
+	go y.collectCandidates(candidateClient)
+}
+
+func (y *Ymir) GetCandidates(c *gin.Context) {
+	fmt.Println("GET /candidate")
+	if y.iceEOF && len(y.helgiCandidates) == 0 {
+		c.Status(http.StatusOK)
+		return
+	}
+	if len(y.helgiCandidates) > 0 {
+		candidate := y.helgiCandidates[0]
+		y.helgiCandidates = y.helgiCandidates[1:]
+		fmt.Println(candidate)
+		c.JSON(http.StatusAccepted, candidate.ToJSON())
+		return
+	}
+	c.Status(http.StatusNoContent)
+	return
+}
+
+func (y *Ymir) SendCandidate(c *gin.Context) {
+	jCandidate, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+		fmt.Println(err)
+		return
+	}
+
+	var candidate *generated.ICECandidate
+	err = json.Unmarshal(jCandidate, &candidate)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+		fmt.Println(err)
+		return
+	}
+	_, err = y.rpcClient.SendCandidate(c.Request.Context(), candidate)
+}
+
+func (y *Ymir) Serve() error {
+	conn, err := grpc.Dial(y.helgiAddr, grpc.WithInsecure())
+	if err != nil {
+		return err
+	}
+
+	helgi := generated.NewWebRTCSignallingClient(conn)
+	y.rpcClient = helgi
+
+	y.ginEngine = gin.Default()
+	y.ginEngine.Use(cors.Default())
+
+	y.ginEngine.GET("/offer", y.GetOffer)
+	y.ginEngine.POST("/answer", y.SendAnswer)
+	y.ginEngine.GET("/candidate", y.GetCandidates)
+	y.ginEngine.POST("/candidate", y.SendCandidate)
+
 	y.ginEngine.Run("0.0.0.0:" + strconv.Itoa(y.port))
+
+	return nil
+}
+
+func (y *Ymir) collectCandidates(candidateClient generated.WebRTCSignalling_GetCandidateClient) {
+	fmt.Println("Starting candidate thread")
+	for {
+		candidate, err := candidateClient.Recv()
+		if err == io.EOF {
+			y.iceEOF = true
+			return
+		}
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Println("Got a candidate")
+		realCandidate := &webrtc.ICECandidate{
+			Foundation:     candidate.Foundation,
+			Priority:       candidate.Priority,
+			Address:        candidate.Address,
+			Protocol:       webrtc.ICEProtocol(candidate.Protocol),
+			Port:           uint16(candidate.Port),
+			Typ:            webrtc.ICECandidateType(candidate.Type),
+			Component:      uint16(candidate.Component),
+			RelatedAddress: candidate.Relatedaddress,
+			RelatedPort:    uint16(candidate.Relatedport),
+			TCPType:        candidate.Tcptype,
+		}
+		y.helgiCandidates = append(y.helgiCandidates, realCandidate)
+	}
 }
