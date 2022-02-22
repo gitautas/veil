@@ -54,6 +54,7 @@ export default class MediaEngine {
         const candidate: RTCIceCandidate = await response.json();
         console.log(candidate);
         await this.peerConnection.addIceCandidate(candidate);
+        console.log("Added candidate");
         await this.getCandidates();
       }
     });
@@ -68,15 +69,15 @@ export default class MediaEngine {
     if (this.peerConnection) {
       this.peerConnection.addEventListener(
         "connectionstatechange",
-        (event: Event) => {
-          console.log(`Connection state changed to ${event}`);
+        (event: any) => {
+          console.log(`Connection state changed to ${event.state}`);
         }
       );
 
       this.peerConnection.addEventListener(
         "iceconnectionstatechange",
-        (event: Event) => {
-          console.log(`ICE connection state changed to ${event}`);
+        (event: any) => {
+          console.log(`ICE connection state changed to ${event.state}`);
         }
       );
 
