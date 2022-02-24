@@ -1,0 +1,12 @@
+[submodule "veil-helgi"]
+	path = helgi
+	url = https://github.com/gitautas/veil-helgi
+[submodule "veil-ymir"]
+	path = ymir
+	url = https://github.com/gitautas/veil-ymir
+[submodule "veil-sigrun"]
+	path = sigrun
+	url = https://github.com/gitautas/veil-sigrun
+[submodule "veil-kara"]
+	path = kara
+	url = https://github.com/gitautas/veil-kara
