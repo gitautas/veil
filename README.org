@@ -1,0 +1,16 @@
+#+TITLE: Veil
+* About
+Veil is an open source, self hosted cloud gaming infrastructure that gives you everything you need to run your own cloud gaming application. The main intended use for this is to host for personal use, but it should be relatively simple to add the required functionality to service multiple people as well.
+* Architecture
+This project is split up into several components, written in different languages and doing different things, the current system is broken down into the following components:
+- [[https://github.com/gitautas/veil-helgi][Helgi:]] This is the the main WebRTC server written in Go, it does a few things:
+  1. Negotiates and establishes a WebRTC connection with the client
+  2. Packetizes the encoded audio and video frames that are sent by Sigrun and Sif through named pipes and sends them to the client.
+  3. Streams the packets to the client
+  4. Deserializes the [[./doc/VIP.org][VIP]] packets sent by the client and replays them using a uinput module
+- [[https://github.com/gitautas/veil-ymir][Ymir:]]  The main REST API written in go, to be replaced by Vlang once either I or someone adds on gRPC functionality.
+- [[https://github.com/gitautas/veil-sigrun][Sigrun:]] This is the program that is responsible for capturing and encoding a GPU framebuffer. It currently only targets NVidia based systems due to the simplicity of NvFBC and NvENC SDKs, in theory one should be able to replicate this functionality using AMD's AMF framework, but it is considerably worse documented and whether the required APIs are exposed I'm still unsure, if I have more time and resources I could research this a bit more, but currently it is not a priority.
+- Sif: This is a program that will manage audio loopback devices, encode them into opus and send them over to Helgi over named pipes. This is still TODO.
+- [[https://github.com/gitautas/veil-kara][Kara:]] This is a vue app that functions as the main client. It negotiates a stream, receives the video and audio streams, reads the gamepad data, serializes it and sends it over to Helgi.
+#+CAPTION: architecture diagram
+[[./doc/veil.svg]]
