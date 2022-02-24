@@ -1,10 +1,11 @@
-:CONTENTS:
-
-:END:
-:PROPERTIES:
-:TOC:      :include all :force (depth) :ignore (nothing) :local (depth)
-:END:
 #+TITLE: VIP - Veil Input Protocol
+* Table of contents :TOC:
+- [[#about][About]]
+- [[#specification][Specification]]
+  - [[#ev-type][EV Type]]
+  - [[#iec][IEC]]
+  - [[#value][Value:]]
+
 * About
 This is a specification of VIP, the Veil Input Protocol, a network protocol to send Linux input event codes over the network, the intended use of this protocol is cloud gaming and VNC applications.
 The reference implementation is used to transport input data over a WebRTC data channel.
