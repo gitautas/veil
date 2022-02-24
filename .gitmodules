@@ -1,16 +1,20 @@
 [submodule "veil-helgi"]
 	path = helgi
 	url = https://github.com/gitautas/veil-helgi
-	branch = main
 [submodule "veil-ymir"]
 	path = ymir
 	url = https://github.com/gitautas/veil-ymir
-	branch = main
 [submodule "veil-sigrun"]
 	path = sigrun
 	url = https://github.com/gitautas/veil-sigrun
-	branch = main
 [submodule "veil-kara"]
 	path = kara
 	url = https://github.com/gitautas/veil-kara
+[submodule "helgi"]
+	branch = main
+[submodule "ymir"]
+	branch = main
+[submodule "sigrun"]
+	branch = main
+[submodule "kara"]
 	branch = main
