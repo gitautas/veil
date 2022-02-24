@@ -14,3 +14,7 @@
 	path = kara
 	url = https://github.com/gitautas/veil-kara
 	branch = main
+[submodule "kara1"]
+	path = kara1
+	url = https://github.com/gitautas/veil-kara
+	branch = main
