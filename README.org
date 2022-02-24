@@ -1,4 +1,5 @@
 #+TITLE: Veil
+#+OPTIONS: toc
 * About
 Veil is an open source, self hosted cloud gaming infrastructure that gives you everything you need to run your own cloud gaming application. The main intended use for this is to host for personal use, but it should be relatively simple to add the required functionality to service multiple people as well.
 * Architecture
