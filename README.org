@@ -17,7 +17,7 @@ This project is split up into several components, written in different languages
 - Sif: This is a program that will manage audio loopback devices, encode them into opus and send them over to Helgi over named pipes. This is still TODO.
 - [[https://github.com/gitautas/veil-kara][Kara:]] This is a vue app that functions as the main client. It negotiates a stream, receives the video and audio streams, reads the gamepad data, serializes it and sends it over to Helgi.
 
-* Deployement
+* Deployment
 Deploying this is quite a complex task to come up with, I'm currently testing a docker-compose based solution but running display sessions inside it is quite complicated so after rewriting Sigrun (nvm fuck nvidia) I'll be looking into LXC/LXD and if that doesn't work out, perhaps bundling a hypervisor with some kind of shared GPU solution. This is still entirely TBD.
 
 
