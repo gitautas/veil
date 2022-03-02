@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"ymir/pkg"
 )
 
 func main() {
-	ymir, err := ymir.NewYmir(4000, "localhost:3000")
+	port := os.Getenv("YMIR_PORT")
+	helgiPort := os.Getenv("HELGI_PORT")
+	ymir, err := ymir.NewYmir(port, "localhost:" + helgiPort)
 	if err != nil {
 		panic(err)
 	}

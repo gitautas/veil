@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 
 	generated "ymir/pkg/pb"
 
@@ -18,7 +17,7 @@ import (
 )
 
 type Ymir struct {
-	port            int
+	port            string
 	helgiAddr       string
 	rpcClient       generated.WebRTCSignallingClient
 	helgiCandidates []*webrtc.ICECandidate
@@ -26,7 +25,7 @@ type Ymir struct {
 	ginEngine       *gin.Engine
 }
 
-func NewYmir(port int, helgiAddr string) (*Ymir, error) {
+func NewYmir(port string, helgiAddr string) (*Ymir, error) {
 	return &Ymir{
 		helgiCandidates: []*webrtc.ICECandidate{},
 		port:            port,
@@ -133,7 +132,7 @@ func (y *Ymir) Serve() error {
 	y.ginEngine.GET("/candidate", y.GetCandidates)
 	y.ginEngine.POST("/candidate", y.SendCandidate)
 
-	y.ginEngine.Run("0.0.0.0:" + strconv.Itoa(y.port))
+	y.ginEngine.Run("0.0.0.0:" + y.port)
 
 	return nil
 }
