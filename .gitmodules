@@ -1,16 +1,17 @@
-[submodule "veil-helgi"]
+[submodule "helgi"]
 	path = helgi
 	url = git@github.com:gitautas/veil-helgi.git
 	branch = main
-[submodule "veil-ymir"]
+[submodule "ymir"]
 	path = ymir
 	url = git@github.com:gitautas/veil-ymir.git
 	branch = main
-[submodule "veil-sigrun"]
+[submodule "sigrun"]
 	path = sigrun
 	url = git@github.com:gitautas/veil-sigrun.git
 	branch = main
-[submodule "veil-kara"]
+[submodule "kara"]
 	path = kara
 	url = git@github.com:gitautas/veil-kara.git
 	branch = main
+
