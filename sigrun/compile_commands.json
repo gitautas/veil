@@ -1,0 +1,34 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/x86_64-linux-gnu-gcc-11",
+      "-m64",
+      "-Wall",
+      "-I./inc",
+      "-ggdb",
+      "-c",
+      "src/sigrun.c",
+      "-o",
+      "sigrun.o"
+    ],
+    "directory": "/home/gintautas/veil-sigrun",
+    "file": "/home/gintautas/veil-sigrun/src/sigrun.c",
+    "output": "/home/gintautas/veil-sigrun/sigrun.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/x86_64-linux-gnu-gcc-11",
+      "-m64",
+      "-Wall",
+      "-I./inc",
+      "-ggdb",
+      "-c",
+      "common/NvFBCUtils.c",
+      "-o",
+      "NvFBCUtils.o"
+    ],
+    "directory": "/home/gintautas/veil-sigrun",
+    "file": "/home/gintautas/veil-sigrun/common/NvFBCUtils.c",
+    "output": "/home/gintautas/veil-sigrun/NvFBCUtils.o"
+  }
+]
