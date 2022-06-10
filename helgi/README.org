@@ -1,0 +1,3 @@
+* Helgi
+Main WebRTC, input and game manager for veil.
+TODO: this doc
