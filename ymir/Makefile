@@ -1,4 +1,4 @@
-NAME = helgi
+NAME = ymir
 
 .PHONY: proto
 proto:
