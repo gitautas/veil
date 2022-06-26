@@ -456,7 +456,7 @@ int main(int argc, char *argv[]) {
   initParams.encodeConfig = &presetConfig.presetCfg;
   initParams.encodeWidth = frameSize.w;
   initParams.encodeHeight = frameSize.h;
-  initParams.frameRateNum = 60;
+  initParams.frameRateNum = 30;
   initParams.frameRateDen = 1;
   initParams.enablePTD = 1;
 

@@ -1,5 +1,5 @@
 <template>
-  <video controls/>
+  <video id="mainPlayer" controls />
 </template>
 
 <script setup lang="ts">

@@ -4,7 +4,7 @@ export default class MediaEngine {
   ymirAddr: string;
   peerConnection: RTCPeerConnection;
   dataChannel!: RTCDataChannel;
-  remoteStream: MediaStream;
+  player: HTMLVideoElement;
 
   public async negotiate(): Promise<void> {
     const offer: RTCSessionDescriptionInit = await this.getOffer();
@@ -70,9 +70,9 @@ export default class MediaEngine {
     });
   }
 
-  constructor(address: string) {
+  constructor(address: string, player: HTMLVideoElement) {
     this.ymirAddr = address;
-    this.remoteStream = new MediaStream();
+    this.player = player;
     this.peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
@@ -99,9 +99,23 @@ export default class MediaEngine {
         }
       );
 
-      this.peerConnection.addEventListener("track", (event: RTCTrackEvent) => {
-        this.remoteStream.addTrack(event.track);
-      });
+      this.peerConnection.addEventListener(
+        "track",
+        async (event: RTCTrackEvent) => {
+          const player: HTMLVideoElement | null =
+            document.querySelector("#mainPlayer");
+          if (player == null) {
+            console.log("Player doesn't exist yet :(");
+            return;
+          }
+
+          console.log(player);
+          const [remote] = event.streams;
+          player.srcObject = remote;
+          // this.remoteStream
+          // this.remoteStream.addTrack(event.track);
+        }
+      );
 
       this.peerConnection.addEventListener(
         "icecandidate",
