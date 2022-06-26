@@ -2,7 +2,7 @@ NAME = ymir
 
 .PHONY: proto
 proto:
-	protoc --proto_path=../protobuf --go_out=./pkg/pb --go-grpc_out=./pkg/pb ../protobuf/*.proto
+	protoc --proto_path=../protobuf --go_out=./pkg/pb --go-grpc_out=./pkg/pb --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative ../protobuf/*.proto
 
 .PHONY: clean
 clean:

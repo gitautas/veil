@@ -3,6 +3,7 @@ module helgi
 go 1.17
 
 require (
+	github.com/golang/protobuf v1.4.3
 	github.com/pion/interceptor v0.1.0
 	github.com/pion/rtp v1.7.2
 	github.com/pion/webrtc/v3 v3.1.1
@@ -11,7 +12,6 @@ require (
 )
 
 require (
-	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/pion/datachannel v1.4.21 // indirect
 	github.com/pion/dtls/v2 v2.0.9 // indirect

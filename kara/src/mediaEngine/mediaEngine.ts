@@ -51,7 +51,7 @@ export default class MediaEngine {
     fetch(this.ymirAddr + "/candidate", {
       method: "GET",
     }).then(async (response: Response) => {
-      console.log(response.status);
+      console.log("Got response for GET candidate:" + response.status);
       switch (response.status) {
         case 204: {
           await new Promise((r) => setTimeout(r, 1000));

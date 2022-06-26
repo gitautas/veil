@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"helgi/pkg/media"
-	"helgi/protobuf/pb"
+	"helgi/pkg/pb"
+	"helgi/pkg/models"
 	"net"
 
 	"github.com/pion/webrtc/v3"
@@ -76,27 +77,35 @@ func (rs *RpcServer) SendAnswer(ctx context.Context, answer *generated.SDP) (*em
 }
 
 func (rs *RpcServer) GetCandidate(_ *emptypb.Empty, stream generated.WebRTCSignalling_GetCandidateServer) error {
-	for rs.mediaEngine.PeerConnection.ICEGatheringState() != webrtc.ICEGatheringStateComplete && rs.mediaEngine.CandidatesLen() != 0 {
+	for !(rs.mediaEngine.PeerConnection.ICEGatheringState() == webrtc.ICEGatheringStateComplete &&
+		rs.mediaEngine.CandidatesLen() == 0) {
+
 		candidate, err := rs.mediaEngine.GetCandidate()
 		if err != nil {
+			fmt.Println(err)
 			break
 		}
 
 		if candidate == nil {
+			fmt.Println("No candidates found but still lookin'")
 			continue
 		}
 
 		fmt.Println("Sending candidate")
-		err = stream.Send(generated.ICECandidateToProto(candidate))
+		err = stream.Send(models.ICECandidateToProto(candidate))
 		fmt.Println("Sent candidate")
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
+	fmt.Println("Finishing getCandidate response stream, current status:")
+	fmt.Println(rs.mediaEngine.PeerConnection.ICEGatheringState())
+	fmt.Println(rs.mediaEngine.CandidatesLen())
+
 	fmt.Println("EOF")
 	return nil
 }
 
 func (rs *RpcServer) SendCandidate(ctx context.Context, candidate *generated.ICECandidate) (*emptypb.Empty, error) {
-	return new(emptypb.Empty), rs.mediaEngine.SendCandidate(candidate.ToPion().ToJSON())
+	return new(emptypb.Empty), rs.mediaEngine.SendCandidate(models.PBToPion(candidate).ToJSON())
 }
