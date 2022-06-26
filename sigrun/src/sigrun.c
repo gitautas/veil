@@ -192,7 +192,7 @@ int main(int argc, char *argv[]) {
 
   void *encoder = NULL;
 
-  enum codecType codec = CODEC_H264;
+  printf("Hello from c!\n");
 
   /*
    * Parse the command line.
@@ -348,11 +348,15 @@ int main(int argc, char *argv[]) {
   }
 
   if (frameSize.w == 0) {
-    frameSize.w = statusParams.screenSize.w;
+    /* frameSize.w = statusParams.screenSize.w; */
+    frameSize.w = 1920;
+    printf("Setting width to %d\n", frameSize.w);
   }
 
   if (frameSize.h == 0) {
-    frameSize.h = statusParams.screenSize.h;
+    /* frameSize.h = statusParams.screenSize.h; */
+    frameSize.h = 1080;
+    printf("Setting height to %d\n", frameSize.h);
   }
 
   /*
@@ -360,7 +364,6 @@ int main(int argc, char *argv[]) {
    * pitch when calling NvEncRegisterResource
    */
   frameSize.w = (frameSize.w + 3) & ~3;
-  ;
 
   /*
    * Create a capture session.
@@ -413,8 +416,7 @@ int main(int argc, char *argv[]) {
   /*
    * Validate the codec requested
    */
-  GUID encodeGuid =
-      codec == CODEC_H264 ? NV_ENC_CODEC_H264_GUID : NV_ENC_CODEC_HEVC_GUID;
+  GUID encodeGuid = NV_ENC_CODEC_H264_GUID;
   encStatus = validateEncodeGUID(encoder, encodeGuid);
   if (encStatus != NV_ENC_SUCCESS) {
     goto enc_fail;
@@ -426,7 +428,7 @@ int main(int argc, char *argv[]) {
   presetConfig.presetCfg.version = NV_ENC_CONFIG_VER;
 
   encStatus = pEncFn.nvEncGetEncodePresetConfig(
-      encoder, encodeGuid, NV_ENC_PRESET_LOW_LATENCY_DEFAULT_GUID,
+      encoder, encodeGuid, NV_ENC_PRESET_DEFAULT_GUID,
       &presetConfig);
   if (encStatus != NV_ENC_SUCCESS) {
     fprintf(stderr,
@@ -436,7 +438,7 @@ int main(int argc, char *argv[]) {
     goto enc_fail;
   }
 
-  presetConfig.presetCfg.profileGUID = NV_ENC_H264_PROFILE_BASELINE_GUID;
+  presetConfig.presetCfg.profileGUID = NV_ENC_H264_PROFILE_MAIN_GUID;
   presetConfig.presetCfg.rcParams.averageBitRate =
       1 * 1024 * 1024; /* Changed from 5 */
   presetConfig.presetCfg.rcParams.maxBitRate =
@@ -450,7 +452,7 @@ int main(int argc, char *argv[]) {
 
   initParams.version = NV_ENC_INITIALIZE_PARAMS_VER;
   initParams.encodeGUID = encodeGuid;
-  initParams.presetGUID = NV_ENC_PRESET_LOW_LATENCY_DEFAULT_GUID;
+  initParams.presetGUID = NV_ENC_PRESET_DEFAULT_GUID;
   initParams.encodeConfig = &presetConfig.presetCfg;
   initParams.encodeWidth = frameSize.w;
   initParams.encodeHeight = frameSize.h;
@@ -458,7 +460,14 @@ int main(int argc, char *argv[]) {
   initParams.frameRateDen = 1;
   initParams.enablePTD = 1;
 
+  printf("%d \n", frameSize.w);
+  printf("%d \n", frameSize.h);
+
   encStatus = pEncFn.nvEncInitializeEncoder(encoder, &initParams);
+  if (encStatus == NV_ENC_ERR_INVALID_PARAM) {
+    printf("Invalid param :(\n");
+  }
+
   if (encStatus != NV_ENC_SUCCESS) {
     fprintf(stderr, "Failed to initialize the encode session, status = %d\n",
             encStatus);

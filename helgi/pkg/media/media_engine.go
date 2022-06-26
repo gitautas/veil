@@ -28,7 +28,7 @@ func NewVeilEngine(config webrtc.Configuration) (*VeilEngine, error) {
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType:     webrtc.MimeTypeH264,
 			ClockRate:    90000,
-			SDPFmtpLine:  "profile-level-id=42001f",
+			SDPFmtpLine:  "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f",
 			RTCPFeedback: nil,
 		},
 		PayloadType:        H264PayloadType,
@@ -59,7 +59,7 @@ func NewVeilEngine(config webrtc.Configuration) (*VeilEngine, error) {
 		return nil, err
 	}
 
-	videoTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{
+	videoTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{
 		MimeType:  webrtc.MimeTypeH264,
 		ClockRate: H264ClockRate,
 		SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f",
@@ -68,7 +68,7 @@ func NewVeilEngine(config webrtc.Configuration) (*VeilEngine, error) {
 		return nil, err
 	}
 
-	audioTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{
+	audioTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{
 		MimeType:  webrtc.MimeTypeOpus,
 		ClockRate: OpusClockRate,
 	}, "audio", "veil")

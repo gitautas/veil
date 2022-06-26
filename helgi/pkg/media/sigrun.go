@@ -1,45 +1,59 @@
 package media
 
 import (
-	"bufio"
-	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 
-	"github.com/pion/rtp"
-	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
+	"github.com/pion/webrtc/v3/pkg/media/h264reader"
 )
 
-func Sigrun(videoTrack *webrtc.TrackLocalStaticRTP) (error) {
+func Sigrun(videoTrack *webrtc.TrackLocalStaticSample) (error) {
+	const h264FrameDuration = time.Millisecond * 33
+
 	pipePath := "../video_pipe"
-	err := syscall.Mkfifo(pipePath, 0666)
-	if err != nil {
-		return err
-	}
+
+	_ = syscall.Mkfifo(pipePath, 0666)
 
 	sigrun := exec.Command("../sigrun/sigrun", pipePath)
-	err = sigrun.Start()
+	// sigrun := exec.Command("../NvFBCToGLEnc", "-o", pipePath)
+
+	err := sigrun.Start()
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	fpipe, err := os.OpenFile(pipePath, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	reader := bufio.NewReader(fpipe)
-	sequencer := rtp.NewFixedSequencer(0) // This is fine since we don't encrypt our media stream.
+	h264, err := h264reader.NewReader(fpipe)
+	if err != nil {
+		panic(err)
+	}
 
-	packetizer := rtp.NewPacketizer(1200, H264PayloadType, 0, &codecs.H264Payloader{}, sequencer, H264ClockRate)
 	go func() {
-		for {
-			line, _, _ := reader.ReadLine()
-			packet := packetizer.Packetize(line, 2000)[0]
-			videoTrack.WriteRTP(packet)
-			fmt.Println(packet)
+		ticker := time.NewTicker(h264FrameDuration)
+
+		for ; true; <-ticker.C {
+			nal, err := h264.NextNAL()
+			if err != nil {
+				panic(err)
+			}
+
+			err = videoTrack.WriteSample(
+				media.Sample{
+					Data:     nal.Data,
+					Duration: h264FrameDuration,
+				},)
+
+			if err != nil {
+				panic(err)
+			}
 		}
 	}()
 
