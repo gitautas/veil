@@ -3,8 +3,6 @@
 - [[#about][About]]
 - [[#architecture][Architecture]]
 
-* Disclaimer
-This project is currently on indefinite hiatus based on both lack of motivation and time, the main missing feature right now is that there is no easy solution to dockerize X11/Wayland with GPU acceleration, other solutions can be looked at like LXD and virtualization but none of them make me happy and is just sort of annoying. If anyone reading this feels like giving it a shot, feel free!
 * About
 Veil is an open source, self hosted cloud gaming infrastructure that gives you everything you need to run your own cloud gaming application. The main intended use for this is to host for personal use, but it should be relatively simple to add the required functionality to service multiple people as well.
 * Architecture
