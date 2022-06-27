@@ -12,7 +12,7 @@ import (
 )
 
 func Sigrun(videoTrack *webrtc.TrackLocalStaticSample) (error) {
-	const h264FrameDuration = time.Millisecond * 33
+	const h264FrameDuration = time.Second / 100
 
 	pipePath := "../video_pipe"
 
@@ -47,8 +47,9 @@ func Sigrun(videoTrack *webrtc.TrackLocalStaticSample) (error) {
 
 			err = videoTrack.WriteSample(
 				media.Sample{
-					Data:     nal.Data,
-					Duration: h264FrameDuration,
+					Data:               nal.Data,
+					Timestamp:          time.Now(),
+					Duration:           h264FrameDuration,
 				},)
 
 			if err != nil {

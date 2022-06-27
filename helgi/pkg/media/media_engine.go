@@ -8,7 +8,7 @@ import (
 
 const (
 	H264ClockRate = 90000
-	H264PayloadType = 125
+	H264PayloadType = 123
 	OpusClockRate = 48000
 	OpusPayloadType = 111
 )
@@ -28,13 +28,18 @@ func NewVeilEngine(config webrtc.Configuration) (*VeilEngine, error) {
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType:     webrtc.MimeTypeH264,
 			ClockRate:    90000,
-			SDPFmtpLine:  "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f",
+			Channels:     0,
 			RTCPFeedback: nil,
 		},
 		PayloadType:        H264PayloadType,
 	}, webrtc.RTPCodecTypeVideo)
 	err = mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2, RTCPFeedback: nil},
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType:     webrtc.MimeTypeOpus,
+			ClockRate:    48000,
+			Channels:     2,
+			RTCPFeedback: nil,
+		},
 		PayloadType:        OpusPayloadType,
 	}, webrtc.RTPCodecTypeAudio)
 

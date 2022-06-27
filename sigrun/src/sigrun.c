@@ -31,8 +31,6 @@ NV_ENCODE_API_FUNCTION_LIST pEncFn;
 typedef NVENCSTATUS(NVENCAPI *PFNNVENCODEAPICREATEINSTANCEPROC)(
     NV_ENCODE_API_FUNCTION_LIST *);
 
-enum codecType { CODEC_H264, CODEC_HEVC };
-
 /**
  * Creates an OpenGL context.
  *
@@ -438,12 +436,12 @@ int main(int argc, char *argv[]) {
     goto enc_fail;
   }
 
-  presetConfig.presetCfg.profileGUID = NV_ENC_H264_PROFILE_MAIN_GUID;
+  presetConfig.presetCfg.profileGUID = NV_ENC_H264_PROFILE_BASELINE_GUID;
   presetConfig.presetCfg.rcParams.averageBitRate =
-      1 * 1024 * 1024; /* Changed from 5 */
+      20 * 1024 * 1024; /* Changed from 5 */
   presetConfig.presetCfg.rcParams.maxBitRate =
-      3 * 1024 * 1024;                                   /* Changed from 8 */
-  presetConfig.presetCfg.rcParams.vbvBufferSize = 87382; /* single frame */
+      30 * 1024 * 1024;                                   /* Changed from 8 */
+  presetConfig.presetCfg.rcParams.vbvBufferSize = 0; /* single frame */
 
   /*
    * Initialize the encode session
@@ -456,7 +454,7 @@ int main(int argc, char *argv[]) {
   initParams.encodeConfig = &presetConfig.presetCfg;
   initParams.encodeWidth = frameSize.w;
   initParams.encodeHeight = frameSize.h;
-  initParams.frameRateNum = 30;
+  initParams.frameRateNum = 1; // This is a strange option, it does something but not setting the framerate...
   initParams.frameRateDen = 1;
   initParams.enablePTD = 1;
 

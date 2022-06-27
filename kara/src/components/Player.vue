@@ -1,5 +1,5 @@
 <template>
-  <video id="mainPlayer" controls />
+  <video id="mainPlayer" autoplay muted />
 </template>
 
 <script setup lang="ts">

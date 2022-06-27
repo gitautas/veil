@@ -112,8 +112,6 @@ export default class MediaEngine {
           console.log(player);
           const [remote] = event.streams;
           player.srcObject = remote;
-          // this.remoteStream
-          // this.remoteStream.addTrack(event.track);
         }
       );
 
