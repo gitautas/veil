@@ -1,0 +1,9 @@
+**/build
+**/target
+**/.git
+**/node_modules
+
+.pnpm-store
+.next
+.cursororignore
+.cursorrules

@@ -1,0 +1,5 @@
+packages:
+  - "compositor"
+  - "encoder"
+  - "server"
+  - "client"

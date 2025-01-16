@@ -1,0 +1,25 @@
+{
+  "name": "veil",
+  "version": "0.0.0",
+  "description": "Self hosted cloud gaming platform",
+  "author": "gitautas",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "lint": "eslint .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "@commitlint/types": "^19.5.0",
+    "@eslint/js": "^9.18.0",
+    "conventional-changelog-atom": "^5.0.0",
+    "eslint": "^9.18.0",
+    "husky": "^9.1.7",
+    "jiti": "^2.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  },
+  "packageManager": "pnpm@9.1.0",
+  "type": "module"
+}
