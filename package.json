@@ -5,14 +5,21 @@
   "author": "gitautas",
   "license": "AGPL-3.0-or-later",
   "scripts": {
-    "lint": "eslint .",
-    "prepare": "husky"
+    "build": "pnpm run build:client && pnpm run build:rust",
+    "build:client": "pnpm --filter @veil/client build",
+    "build:rust": "cargo build --release --workspace",
+
+    "dev": "concurrently --names client,server --prefix '[@veil/{name}]' 'pnpm run dev:client' 'pnpm run dev:server'",
+    "dev:client": "pnpm --filter @veil/client dev",
+    "dev:server": "cd server && watchexec -- cargo run",
+    "lint": "pnpm --filter @veil/client lint" 
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",
     "@commitlint/config-conventional": "^19.6.0",
     "@commitlint/types": "^19.5.0",
     "@eslint/js": "^9.18.0",
+    "concurrently": "^8.2.2",
     "conventional-changelog-atom": "^5.0.0",
     "eslint": "^9.18.0",
     "husky": "^9.1.7",

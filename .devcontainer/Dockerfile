@@ -56,6 +56,8 @@ RUN export BIN_PATH=$HOME/.local/bin && \
 # rust
 RUN zsh -c "$(curl -fsSL https://sh.rustup.rs)" -- -y && \
     echo "source $HOME/.cargo/env" >> $HOME/.zshrc
+RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | zsh && \
+    cargo binstall watchexec-cli -y
 
 # node
 ENV PNPM_STORE=$WORKSPACE/.pnpm-store
