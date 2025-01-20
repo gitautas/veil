@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package webrtc;
+
+message SessionDescription {
+  enum Type {
+    UNSPECIFIED = 0;
+    OFFER = 1;
+    ANSWER = 2;
+  }
+
+  Type type = 1;
+  string sdp = 2;
+}
+
+message IceCandidate {
+  string candidate = 1;
+  string sdp_mid = 2;
+  uint32 sdp_mline_index = 3;
+  string username_fragment = 4;
+}

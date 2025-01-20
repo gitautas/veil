@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "apps/server",
+    "packages/compositor",
+    "packages/encoder"
+]
+
+resolver = "2"

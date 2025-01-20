@@ -1,0 +1,11 @@
+{
+    "name": "@veil/server",
+    "scripts": {
+      "build": "cargo build --release",
+      "dev": "cargo run"
+    },
+    "dependencies": {
+      "@veil/compositor": "workspace:*",
+      "@veil/encoder": "workspace:*"
+    }
+  }

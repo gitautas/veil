@@ -13,6 +13,7 @@
     "containerEnv": {
         "NVIDIA_VISIBLE_DEVICES": "all",
         "NVIDIA_DRIVER_CAPABILITIES": "all",
+        "WORKSPACE": "/workspaces/veil"
     },
     "customizations": {
         "vscode": {
@@ -29,7 +30,9 @@
                 "idered.npm",
                 "jcreamer.vscode-monorepo-tools",
                 "mkhl.shfmt",
-                "dbaeumer.vscode-eslint"
+                "dbaeumer.vscode-eslint",
+                "bufbuild.vscode-buf",
+                "rust-lang.rust-analyzer"
             ]
         }
     }

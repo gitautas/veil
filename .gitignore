@@ -2,8 +2,14 @@
 **/target
 **/.git
 **/node_modules
+**/dist
+**/pb
+**/.next
 
-.pnpm-store
-.next
+.notes
+
 .cursororignore
 .cursorrules
+
+.pnpm-store
+.turbo

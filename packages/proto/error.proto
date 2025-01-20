@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package veil;
+
+message Error { 
+    enum Code {
+        ERROR_UNSPECIFIED = 0;
+
+        ERROR_SERVER = 10;
+
+        ERROR_PROTOCOL = 20;
+    }
+
+    Code code = 1;
+    string message = 2;
+}

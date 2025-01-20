@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package server;
+
+import "webrtc.proto";
+
+service Server {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+
+  rpc SetAnswer(SetAnswerRequest) returns (SetAnswerResponse);
+
+  rpc Renegotiate(RenegotiateRequest) returns (RenegotiateResponse);
+
+  rpc TrickleIce(stream webrtc.IceCandidate) returns (stream webrtc.IceCandidate);
+}
+
+message CreateSessionRequest {}
+message CreateSessionResponse {
+  webrtc.SessionDescription offer = 1;
+}
+
+message SetAnswerRequest {
+  webrtc.SessionDescription answer = 1;
+}
+message SetAnswerResponse {}
+
+message RenegotiateRequest {
+  webrtc.SessionDescription offer = 1;
+}
+message RenegotiateResponse {
+  webrtc.SessionDescription answer = 1;
+}

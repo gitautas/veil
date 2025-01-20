@@ -1,5 +1,3 @@
 packages:
-  - "compositor"
-  - "encoder"
-  - "server"
-  - "client"
+  - "apps/*"
+  - "packages/*"

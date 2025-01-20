@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package video;
+
+enum VideoCodec {
+    UNSPECIFIED = 0;
+    AVC = 1;
+    HEVC = 2;
+}

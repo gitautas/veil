@@ -2,19 +2,17 @@
   "name": "veil",
   "version": "0.0.0",
   "description": "Self hosted cloud gaming platform",
-  "author": "gitautas",
-  "license": "AGPL-3.0-or-later",
+  "author": "Gintautas Kazlauskas <g@veil.gg>",
+  "private": true,
   "scripts": {
-    "build": "pnpm run build:client && pnpm run build:rust",
-    "build:client": "pnpm --filter @veil/client build",
-    "build:rust": "cargo build --release --workspace",
-
-    "dev": "concurrently --names client,server --prefix '[@veil/{name}]' 'pnpm run dev:client' 'pnpm run dev:server'",
-    "dev:client": "pnpm --filter @veil/client dev",
-    "dev:server": "cd server && watchexec -- cargo run",
-    "lint": "pnpm --filter @veil/client lint" 
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint"
   },
   "devDependencies": {
+    "@bufbuild/buf": "^1.50.0",
+    "@bufbuild/protobuf": "^2.2.3",
+    "@bufbuild/protoc-gen-es": "^2.2.3",
     "@commitlint/cli": "^19.6.1",
     "@commitlint/config-conventional": "^19.6.0",
     "@commitlint/types": "^19.5.0",
@@ -24,9 +22,9 @@
     "eslint": "^9.18.0",
     "husky": "^9.1.7",
     "jiti": "^2.4.2",
+    "turbo": "^2.3.3",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },
-  "packageManager": "pnpm@9.1.0",
-  "type": "module"
+  "packageManager": "pnpm@9.1.0"
 }

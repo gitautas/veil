@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package compositor;
+
+service Compositor {
+  rpc StartSession(StartSessionRequest) returns (StartSessionResponse);
+}
+
+message StartSessionRequest {
+  string command = 1;
+}
+
+message StartSessionResponse {
+  string session_id = 1;
+}
