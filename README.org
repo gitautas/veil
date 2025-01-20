@@ -11,6 +11,3 @@ The project consists of several key components:
 - Server :: Rust-based webRTC server
 - Compositor :: Rust-based wayland compositor
 - Encoder :: Rust-based Vulkan Video encoder library
-
-* License
-AGPL-3.0-or-later

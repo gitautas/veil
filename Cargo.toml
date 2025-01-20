@@ -4,5 +4,3 @@ members = [
     "modules/compositor",
     "modules/encoder"
 ]
-
-resolver = "2"
