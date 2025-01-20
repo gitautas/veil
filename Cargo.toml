@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "apps/server",
-    "packages/compositor",
-    "packages/encoder"
+    "modules/server",
+    "modules/compositor",
+    "modules/encoder"
 ]
 
 resolver = "2"
