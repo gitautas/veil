@@ -4,6 +4,7 @@
   "description": "Self hosted cloud gaming platform",
   "author": "Gintautas Kazlauskas <g@veil.gg>",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -17,14 +18,15 @@
     "@commitlint/config-conventional": "^19.6.0",
     "@commitlint/types": "^19.5.0",
     "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
     "concurrently": "^8.2.2",
     "conventional-changelog-atom": "^5.0.0",
-    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
     "husky": "^9.1.7",
-    "jiti": "^2.4.2",
+    "prettier": "3.4.2",
     "turbo": "^2.3.3",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
+    "typescript-eslint": "^8.21.0"
   },
   "packageManager": "pnpm@9.1.0"
 }

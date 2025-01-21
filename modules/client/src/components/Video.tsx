@@ -1,5 +1,5 @@
-import React from 'react';
-import { VeilSessionDescription } from '@veil/sdk';
+import React from "react";
+import { VeilSessionDescription } from "@veil/sdk";
 
 interface VideoProps {
   stream: MediaStream;
@@ -35,12 +35,12 @@ export const Video = ({ stream }: VideoProps) => {
       autoPlay
       playsInline
       style={{
-        position: 'fixed',
+        position: "fixed",
         top: 0,
         left: 0,
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover'
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
       }}
     />
   );

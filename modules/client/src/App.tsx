@@ -1,9 +1,7 @@
-import { Video } from './components/Video';
+import { Video } from "./components/Video";
 
 const stream = new MediaStream();
 
 export function App() {
-  return (
-    <Video stream={stream} />
-  );
+  return <Video stream={stream} />;
 }

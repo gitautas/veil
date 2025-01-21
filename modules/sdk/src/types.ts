@@ -1,17 +1,17 @@
 export interface VeilSessionDescription {
-    // Command to execute
-    command: string[];
+  // Command to execute
+  command: string[];
 
-    // Virtual display parameters
-    display: Display;
+  // Virtual display parameters
+  display: Display
 }
 
 interface Display {
-    resolution: Resolution;
-    refreshRate: number;
+  resolution: Resolution;
+  refreshRate: number;
 }
 
 interface Resolution {
-    width: number;
-    height: number;
+  width: number;
+  height: number;
 }

@@ -1,7 +1,7 @@
 {
-    "name": "@veil/compositor",
-    "scripts": {
-      "build": "cargo build --release",
-      "dev": "cargo build"
-    }
+  "name": "@veil/compositor",
+  "scripts": {
+    "build": "cargo build --release",
+    "dev": "cargo build"
   }
+}

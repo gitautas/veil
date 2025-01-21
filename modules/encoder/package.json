@@ -1,7 +1,7 @@
 {
-    "name": "@veil/encoder",
-    "scripts": {
-      "build": "cargo build --release",
-      "dev": "cargo build"
-    }
+  "name": "@veil/encoder",
+  "scripts": {
+    "build": "cargo build --release",
+    "dev": "cargo build"
   }
+}
