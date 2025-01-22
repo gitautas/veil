@@ -1,0 +1,17 @@
+[package]
+name = "proto"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "proto"
+path = "out_rs/mod.rs"
+
+[build-dependencies]
+grpc-build = "7.0.0"
+
+[dependencies]
+grpc-build = "7.0.0"
+grpc-build-core = "0.4.0"
+prost = "0.13.4"
+tonic = "0.12.3"

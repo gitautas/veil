@@ -4,7 +4,10 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-prost = "0.13.4"
 webrtc = "0.12.0"
+proto = { path = "../proto" }
 compositor = { path = "../compositor" }
 encoder = { path = "../encoder" }
+tonic = "0.12.3"
+tokio = "1.43.0"
+tokio-stream = "0.1.17"

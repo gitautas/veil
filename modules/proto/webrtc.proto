@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package webrtc;
+package veil.webrtc;
 
 message SessionDescription {
   enum Type {

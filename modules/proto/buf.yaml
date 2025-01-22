@@ -1,9 +1,0 @@
-version: v2
-modules:
-  - path: .
-lint:
-  use:
-    - BASIC
-breaking:
-  use:
-    - FILE

@@ -2,5 +2,8 @@
 members = [
     "modules/server",
     "modules/compositor",
-    "modules/encoder"
+    "modules/encoder",
+    "modules/proto"
 ]
+
+resolver = "2"

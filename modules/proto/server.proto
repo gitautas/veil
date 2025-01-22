@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package server;
+package veil;
 
 import "webrtc.proto";
 
-service Server {
+service Veil {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
 
   rpc SetAnswer(SetAnswerRequest) returns (SetAnswerResponse);

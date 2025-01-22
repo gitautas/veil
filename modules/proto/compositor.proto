@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package compositor;
+package veil.compositor;
 
 service Compositor {
   rpc StartSession(StartSessionRequest) returns (StartSessionResponse);

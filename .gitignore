@@ -6,6 +6,8 @@
 **/pb
 **/.next
 
+modules/proto/out_rs/*
+
 .notes
 
 .cursorignore
