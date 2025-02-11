@@ -15,7 +15,8 @@ RUN apt install -y apt-transport-https apt-utils ca-certificates curl dialog \
     git git-lfs gnupg2 htop iproute2 jq less libc6 libgssapi-krb5-2 \
     libkrb5-3 libstdc++6 locales lsb-release lsof man-db manpages \
     manpages-dev nano ncdu net-tools openssh-client procps psmisc \
-    rsync strace sudo unzip vim-tiny wget zip zlib1g zsh build-essential
+    rsync strace sudo unzip vim-tiny wget zip zlib1g zsh build-essential \
+    protobuf-compiler
 
 ########################################## User #########################################################
 # Create user
@@ -61,6 +62,9 @@ RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/ca
 
 # node
 ENV PNPM_STORE=$WORKSPACE/.pnpm-store
-RUN zsh -c "$(curl -fsSL https://get.pnpm.io/install.sh)"
-RUN source $HOME/.zshrc && pnpm env use --global latest && pnpm install --global pnpm
+RUN bash -c "$(curl -fsSL https://get.pnpm.io/install.sh)"
+RUN source $HOME/.zshrc && pnpm env use --global latest
 RUN echo "alias p='pnpm'" >> $HOME/.zshrc
+
+# protobuf
+RUN cargo install protoc-gen-prost protoc-gen-prost-serde protoc-gen-tonic protoc-gen-prost-crate

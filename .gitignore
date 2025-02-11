@@ -15,3 +15,5 @@ modules/proto/out_rs/*
 
 .pnpm-store
 .turbo
+
+.envrc

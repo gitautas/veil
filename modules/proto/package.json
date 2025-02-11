@@ -1,0 +1,20 @@
+{
+  "name": "@veil/proto",
+  "version": "0.0.0",
+  "type": "module",
+  "files": [
+    "gen/ts",
+    "dist"
+  ],
+  "scripts": {
+    "build": "buf generate && tsc -b",
+    "lint": "buf lint",
+    "clean": "rm -rf gen",
+    "format": "buf format -w"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.29.0",
+    "@bufbuild/protobuf": "^1.7.2",
+    "@bufbuild/protoc-gen-es": "^1.7.2"
+  }
+}

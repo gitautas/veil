@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import * as v from "@veil/proto";
 
 export interface MediaEngineConfig {
   peerConnection: RTCConfiguration;
