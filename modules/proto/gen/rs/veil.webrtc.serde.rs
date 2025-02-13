@@ -263,7 +263,7 @@ impl serde::Serialize for session_description::Type {
         S: serde::Serializer,
     {
         let variant = match self {
-            Self::Unspecified => "UNSPECIFIED",
+            Self::SdpUnspecified => "SDP_UNSPECIFIED",
             Self::Offer => "OFFER",
             Self::Answer => "ANSWER",
         };
@@ -277,7 +277,7 @@ impl<'de> serde::Deserialize<'de> for session_description::Type {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "UNSPECIFIED",
+            "SDP_UNSPECIFIED",
             "OFFER",
             "ANSWER",
         ];
@@ -320,7 +320,7 @@ impl<'de> serde::Deserialize<'de> for session_description::Type {
                 E: serde::de::Error,
             {
                 match value {
-                    "UNSPECIFIED" => Ok(session_description::Type::Unspecified),
+                    "SDP_UNSPECIFIED" => Ok(session_description::Type::SdpUnspecified),
                     "OFFER" => Ok(session_description::Type::Offer),
                     "ANSWER" => Ok(session_description::Type::Answer),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),

@@ -5,8 +5,9 @@
 **/dist
 **/pb
 **/.next
+**/*.tsbuildinfo
 
-modules/proto/out_rs/*
+modules/proto/gen
 
 .notes
 

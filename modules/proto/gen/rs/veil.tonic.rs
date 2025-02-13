@@ -1,6 +1,6 @@
 // @generated
 /// Generated client implementations.
-pub mod veil_client {
+pub mod rtc_service_client {
     #![allow(
         unused_variables,
         dead_code,
@@ -11,10 +11,10 @@ pub mod veil_client {
     use tonic::codegen::*;
     use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
-    pub struct VeilClient<T> {
+    pub struct RtcServiceClient<T> {
         inner: tonic::client::Grpc<T>,
     }
-    impl VeilClient<tonic::transport::Channel> {
+    impl RtcServiceClient<tonic::transport::Channel> {
         /// Attempt to create a new client by connecting to a given endpoint.
         pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
         where
@@ -25,7 +25,7 @@ pub mod veil_client {
             Ok(Self::new(conn))
         }
     }
-    impl<T> VeilClient<T>
+    impl<T> RtcServiceClient<T>
     where
         T: tonic::client::GrpcService<tonic::body::BoxBody>,
         T::Error: Into<StdError>,
@@ -43,7 +43,7 @@ pub mod veil_client {
         pub fn with_interceptor<F>(
             inner: T,
             interceptor: F,
-        ) -> VeilClient<InterceptedService<T, F>>
+        ) -> RtcServiceClient<InterceptedService<T, F>>
         where
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
@@ -57,7 +57,7 @@ pub mod veil_client {
                 http::Request<tonic::body::BoxBody>,
             >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
-            VeilClient::new(InterceptedService::new(inner, interceptor))
+            RtcServiceClient::new(InterceptedService::new(inner, interceptor))
         }
         /// Compress requests with the given encoding.
         ///
@@ -106,9 +106,12 @@ pub mod veil_client {
                     )
                 })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/veil.Veil/CreateSession");
+            let path = http::uri::PathAndQuery::from_static(
+                "/veil.RTCService/CreateSession",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("veil.Veil", "CreateSession"));
+            req.extensions_mut()
+                .insert(GrpcMethod::new("veil.RTCService", "CreateSession"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn set_answer(
@@ -127,9 +130,11 @@ pub mod veil_client {
                     )
                 })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/veil.Veil/SetAnswer");
+            let path = http::uri::PathAndQuery::from_static(
+                "/veil.RTCService/SetAnswer",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("veil.Veil", "SetAnswer"));
+            req.extensions_mut().insert(GrpcMethod::new("veil.RTCService", "SetAnswer"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn renegotiate(
@@ -148,18 +153,19 @@ pub mod veil_client {
                     )
                 })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/veil.Veil/Renegotiate");
+            let path = http::uri::PathAndQuery::from_static(
+                "/veil.RTCService/Renegotiate",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("veil.Veil", "Renegotiate"));
+            req.extensions_mut()
+                .insert(GrpcMethod::new("veil.RTCService", "Renegotiate"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn trickle_ice(
             &mut self,
-            request: impl tonic::IntoStreamingRequest<
-                Message = super::webrtc::IceCandidate,
-            >,
+            request: impl tonic::IntoStreamingRequest<Message = super::TrickleIceRequest>,
         ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::webrtc::IceCandidate>>,
+            tonic::Response<tonic::codec::Streaming<super::TrickleIceResponse>>,
             tonic::Status,
         > {
             self.inner
@@ -171,15 +177,18 @@ pub mod veil_client {
                     )
                 })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/veil.Veil/TrickleIce");
+            let path = http::uri::PathAndQuery::from_static(
+                "/veil.RTCService/TrickleIce",
+            );
             let mut req = request.into_streaming_request();
-            req.extensions_mut().insert(GrpcMethod::new("veil.Veil", "TrickleIce"));
+            req.extensions_mut()
+                .insert(GrpcMethod::new("veil.RTCService", "TrickleIce"));
             self.inner.streaming(req, path, codec).await
         }
     }
 }
 /// Generated server implementations.
-pub mod veil_server {
+pub mod rtc_service_server {
     #![allow(
         unused_variables,
         dead_code,
@@ -188,9 +197,9 @@ pub mod veil_server {
         clippy::let_unit_value,
     )]
     use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with VeilServer.
+    /// Generated trait containing gRPC methods that should be implemented for use with RtcServiceServer.
     #[async_trait]
-    pub trait Veil: std::marker::Send + std::marker::Sync + 'static {
+    pub trait RtcService: std::marker::Send + std::marker::Sync + 'static {
         async fn create_session(
             &self,
             request: tonic::Request<super::CreateSessionRequest>,
@@ -214,24 +223,24 @@ pub mod veil_server {
         >;
         /// Server streaming response type for the TrickleIce method.
         type TrickleIceStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<super::webrtc::IceCandidate, tonic::Status>,
+                Item = std::result::Result<super::TrickleIceResponse, tonic::Status>,
             >
             + std::marker::Send
             + 'static;
         async fn trickle_ice(
             &self,
-            request: tonic::Request<tonic::Streaming<super::webrtc::IceCandidate>>,
+            request: tonic::Request<tonic::Streaming<super::TrickleIceRequest>>,
         ) -> std::result::Result<tonic::Response<Self::TrickleIceStream>, tonic::Status>;
     }
     #[derive(Debug)]
-    pub struct VeilServer<T> {
+    pub struct RtcServiceServer<T> {
         inner: Arc<T>,
         accept_compression_encodings: EnabledCompressionEncodings,
         send_compression_encodings: EnabledCompressionEncodings,
         max_decoding_message_size: Option<usize>,
         max_encoding_message_size: Option<usize>,
     }
-    impl<T> VeilServer<T> {
+    impl<T> RtcServiceServer<T> {
         pub fn new(inner: T) -> Self {
             Self::from_arc(Arc::new(inner))
         }
@@ -282,9 +291,9 @@ pub mod veil_server {
             self
         }
     }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for VeilServer<T>
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for RtcServiceServer<T>
     where
-        T: Veil,
+        T: RtcService,
         B: Body + std::marker::Send + 'static,
         B::Error: Into<StdError> + std::marker::Send + 'static,
     {
@@ -299,11 +308,11 @@ pub mod veil_server {
         }
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             match req.uri().path() {
-                "/veil.Veil/CreateSession" => {
+                "/veil.RTCService/CreateSession" => {
                     #[allow(non_camel_case_types)]
-                    struct CreateSessionSvc<T: Veil>(pub Arc<T>);
+                    struct CreateSessionSvc<T: RtcService>(pub Arc<T>);
                     impl<
-                        T: Veil,
+                        T: RtcService,
                     > tonic::server::UnaryService<super::CreateSessionRequest>
                     for CreateSessionSvc<T> {
                         type Response = super::CreateSessionResponse;
@@ -317,7 +326,7 @@ pub mod veil_server {
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as Veil>::create_session(&inner, request).await
+                                <T as RtcService>::create_session(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -344,10 +353,12 @@ pub mod veil_server {
                     };
                     Box::pin(fut)
                 }
-                "/veil.Veil/SetAnswer" => {
+                "/veil.RTCService/SetAnswer" => {
                     #[allow(non_camel_case_types)]
-                    struct SetAnswerSvc<T: Veil>(pub Arc<T>);
-                    impl<T: Veil> tonic::server::UnaryService<super::SetAnswerRequest>
+                    struct SetAnswerSvc<T: RtcService>(pub Arc<T>);
+                    impl<
+                        T: RtcService,
+                    > tonic::server::UnaryService<super::SetAnswerRequest>
                     for SetAnswerSvc<T> {
                         type Response = super::SetAnswerResponse;
                         type Future = BoxFuture<
@@ -360,7 +371,7 @@ pub mod veil_server {
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as Veil>::set_answer(&inner, request).await
+                                <T as RtcService>::set_answer(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -387,10 +398,12 @@ pub mod veil_server {
                     };
                     Box::pin(fut)
                 }
-                "/veil.Veil/Renegotiate" => {
+                "/veil.RTCService/Renegotiate" => {
                     #[allow(non_camel_case_types)]
-                    struct RenegotiateSvc<T: Veil>(pub Arc<T>);
-                    impl<T: Veil> tonic::server::UnaryService<super::RenegotiateRequest>
+                    struct RenegotiateSvc<T: RtcService>(pub Arc<T>);
+                    impl<
+                        T: RtcService,
+                    > tonic::server::UnaryService<super::RenegotiateRequest>
                     for RenegotiateSvc<T> {
                         type Response = super::RenegotiateResponse;
                         type Future = BoxFuture<
@@ -403,7 +416,7 @@ pub mod veil_server {
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as Veil>::renegotiate(&inner, request).await
+                                <T as RtcService>::renegotiate(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -430,14 +443,14 @@ pub mod veil_server {
                     };
                     Box::pin(fut)
                 }
-                "/veil.Veil/TrickleIce" => {
+                "/veil.RTCService/TrickleIce" => {
                     #[allow(non_camel_case_types)]
-                    struct TrickleIceSvc<T: Veil>(pub Arc<T>);
+                    struct TrickleIceSvc<T: RtcService>(pub Arc<T>);
                     impl<
-                        T: Veil,
-                    > tonic::server::StreamingService<super::webrtc::IceCandidate>
+                        T: RtcService,
+                    > tonic::server::StreamingService<super::TrickleIceRequest>
                     for TrickleIceSvc<T> {
-                        type Response = super::webrtc::IceCandidate;
+                        type Response = super::TrickleIceResponse;
                         type ResponseStream = T::TrickleIceStream;
                         type Future = BoxFuture<
                             tonic::Response<Self::ResponseStream>,
@@ -446,12 +459,12 @@ pub mod veil_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                tonic::Streaming<super::webrtc::IceCandidate>,
+                                tonic::Streaming<super::TrickleIceRequest>,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as Veil>::trickle_ice(&inner, request).await
+                                <T as RtcService>::trickle_ice(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -498,7 +511,7 @@ pub mod veil_server {
             }
         }
     }
-    impl<T> Clone for VeilServer<T> {
+    impl<T> Clone for RtcServiceServer<T> {
         fn clone(&self) -> Self {
             let inner = self.inner.clone();
             Self {
@@ -511,8 +524,8 @@ pub mod veil_server {
         }
     }
     /// Generated gRPC service name
-    pub const SERVICE_NAME: &str = "veil.Veil";
-    impl<T> tonic::server::NamedService for VeilServer<T> {
+    pub const SERVICE_NAME: &str = "veil.RTCService";
+    impl<T> tonic::server::NamedService for RtcServiceServer<T> {
         const NAME: &'static str = SERVICE_NAME;
     }
 }

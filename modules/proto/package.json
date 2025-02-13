@@ -2,12 +2,18 @@
   "name": "@veil/proto",
   "version": "0.0.0",
   "type": "module",
-  "files": [
-    "gen/ts",
-    "dist"
-  ],
+  "private": true,
+  "main": "./gen/ts/dist/index.js",
+  "types": "./gen/ts/dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./gen/ts/dist/index.d.ts",
+      "import": "./gen/ts/dist/index.js",
+      "default": "./gen/ts/dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "buf generate && tsc -b",
+    "build": "buf generate && pnpm tsc -b",
     "lint": "buf lint",
     "clean": "rm -rf gen",
     "format": "buf format -w"

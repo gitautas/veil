@@ -12,7 +12,7 @@ pub mod session_description {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
     pub enum Type {
-        Unspecified = 0,
+        SdpUnspecified = 0,
         Offer = 1,
         Answer = 2,
     }
@@ -23,7 +23,7 @@ pub mod session_description {
         /// (if the ProtoBuf definition does not change) and safe for programmatic use.
         pub fn as_str_name(&self) -> &'static str {
             match self {
-                Self::Unspecified => "UNSPECIFIED",
+                Self::SdpUnspecified => "SDP_UNSPECIFIED",
                 Self::Offer => "OFFER",
                 Self::Answer => "ANSWER",
             }
@@ -31,7 +31,7 @@ pub mod session_description {
         /// Creates an enum from field names used in the ProtoBuf definition.
         pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
             match value {
-                "UNSPECIFIED" => Some(Self::Unspecified),
+                "SDP_UNSPECIFIED" => Some(Self::SdpUnspecified),
                 "OFFER" => Some(Self::Offer),
                 "ANSWER" => Some(Self::Answer),
                 _ => None,

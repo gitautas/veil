@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package veil.compositor;
 
-service Compositor {
+service CompositorService {
   rpc StartSession(StartSessionRequest) returns (StartSessionResponse);
 }
 

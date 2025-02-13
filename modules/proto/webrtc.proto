@@ -4,7 +4,7 @@ package veil.webrtc;
 
 message SessionDescription {
   enum Type {
-    UNSPECIFIED = 0;
+    SDP_UNSPECIFIED = 0;
     OFFER = 1;
     ANSWER = 2;
   }

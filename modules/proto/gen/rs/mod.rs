@@ -8,10 +8,10 @@ pub mod veil {
         include!("veil.compositor.rs");
         // @@protoc_insertion_point(veil.compositor)
     }
-    // @@protoc_insertion_point(attribute:veil.video)
-    pub mod video {
-        include!("veil.video.rs");
-        // @@protoc_insertion_point(veil.video)
+    // @@protoc_insertion_point(attribute:veil.media)
+    pub mod media {
+        include!("veil.media.rs");
+        // @@protoc_insertion_point(veil.media)
     }
     // @@protoc_insertion_point(attribute:veil.webrtc)
     pub mod webrtc {

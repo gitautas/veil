@@ -3,22 +3,22 @@ version: v2
 clean: true
 
 plugins:
-- local: protoc-gen-es
-  out: gen/ts
-  opt: target=ts
+  - local: protoc-gen-es
+    out: gen/ts
+    opt: target=ts
 
-- local: protoc-gen-prost
-  out: gen/rs
+  - local: protoc-gen-prost
+    out: gen/rs
 
-- local: protoc-gen-prost-serde
-  out: gen/rs
+  - local: protoc-gen-prost-serde
+    out: gen/rs
 
-- local: protoc-gen-tonic
-  out: gen/rs
+  - local: protoc-gen-tonic
+    out: gen/rs
 
-- local: protoc-gen-prost-crate
-  out: gen/rs
-  opt: no_features=true
+  - local: protoc-gen-prost-crate
+    out: gen/rs
+    opt: no_features=true
 
 inputs:
   - directory: .

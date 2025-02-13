@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package veil.video;
+package veil.media;
 
 enum VideoCodec {
-    UNSPECIFIED = 0;
-    AVC = 1;
-    HEVC = 2;
+  CODEC_UNSPECIFIED = 0;
+  AVC = 1;
+  HEVC = 2;
 }

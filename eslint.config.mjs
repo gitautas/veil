@@ -2,6 +2,7 @@
 
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
+import json from "@eslint/json";
 import eslintConfigPrettier from "eslint-config-prettier";
 
 export default tseslint.config(
@@ -9,10 +10,16 @@ export default tseslint.config(
   tseslint.configs.recommended,
   eslintConfigPrettier,
   {
+    ignores: ["**/*.js", "**/dist"],
+    plugins: {
+      json,
+    },
     languageOptions: {
       parserOptions: {
-        projectService: true,
-        tsconfigRootDir: process.cwd(),
+        projectService: {
+          allowDefaultProject: ["eslint.config.mjs", "tsconfig.json",],
+          loadTypeScriptPlugins: true,
+        },
       },
     },
   },

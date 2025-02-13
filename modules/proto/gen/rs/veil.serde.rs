@@ -120,6 +120,7 @@ impl serde::Serialize for audio_stream::Channel {
         S: serde::Serializer,
     {
         let variant = match self {
+            Self::Unspecified => "CHANNEL_UNSPECIFIED",
             Self::Mono => "MONO",
             Self::FrontLeft => "FRONT_LEFT",
             Self::FrontRight => "FRONT_RIGHT",
@@ -143,6 +144,7 @@ impl<'de> serde::Deserialize<'de> for audio_stream::Channel {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
+            "CHANNEL_UNSPECIFIED",
             "MONO",
             "FRONT_LEFT",
             "FRONT_RIGHT",
@@ -195,6 +197,7 @@ impl<'de> serde::Deserialize<'de> for audio_stream::Channel {
                 E: serde::de::Error,
             {
                 match value {
+                    "CHANNEL_UNSPECIFIED" => Ok(audio_stream::Channel::Unspecified),
                     "MONO" => Ok(audio_stream::Channel::Mono),
                     "FRONT_LEFT" => Ok(audio_stream::Channel::FrontLeft),
                     "FRONT_RIGHT" => Ok(audio_stream::Channel::FrontRight),
@@ -221,6 +224,7 @@ impl serde::Serialize for audio_stream::Codec {
         S: serde::Serializer,
     {
         let variant = match self {
+            Self::Unspecified => "CODEC_UNSPECIFIED",
             Self::Opus => "OPUS",
         };
         serializer.serialize_str(variant)
@@ -233,6 +237,7 @@ impl<'de> serde::Deserialize<'de> for audio_stream::Codec {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
+            "CODEC_UNSPECIFIED",
             "OPUS",
         ];
 
@@ -274,6 +279,7 @@ impl<'de> serde::Deserialize<'de> for audio_stream::Codec {
                 E: serde::de::Error,
             {
                 match value {
+                    "CODEC_UNSPECIFIED" => Ok(audio_stream::Codec::Unspecified),
                     "OPUS" => Ok(audio_stream::Codec::Opus),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
@@ -875,7 +881,7 @@ impl serde::Serialize for gamepad::Mapping {
         S: serde::Serializer,
     {
         let variant = match self {
-            Self::Unspecified => "UNSPECIFIED",
+            Self::Unspecified => "MAPPING_UNSPECIFIED",
             Self::Standard => "STANDARD",
             Self::StandardXr => "STANDARD_XR",
         };
@@ -889,7 +895,7 @@ impl<'de> serde::Deserialize<'de> for gamepad::Mapping {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "UNSPECIFIED",
+            "MAPPING_UNSPECIFIED",
             "STANDARD",
             "STANDARD_XR",
         ];
@@ -932,7 +938,7 @@ impl<'de> serde::Deserialize<'de> for gamepad::Mapping {
                 E: serde::de::Error,
             {
                 match value {
-                    "UNSPECIFIED" => Ok(gamepad::Mapping::Unspecified),
+                    "MAPPING_UNSPECIFIED" => Ok(gamepad::Mapping::Unspecified),
                     "STANDARD" => Ok(gamepad::Mapping::Standard),
                     "STANDARD_XR" => Ok(gamepad::Mapping::StandardXr),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
@@ -1398,6 +1404,188 @@ impl<'de> serde::Deserialize<'de> for SetAnswerResponse {
         deserializer.deserialize_struct("veil.SetAnswerResponse", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for TrickleIceRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.candidate.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("veil.TrickleIceRequest", len)?;
+        if let Some(v) = self.candidate.as_ref() {
+            struct_ser.serialize_field("candidate", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for TrickleIceRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "candidate",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Candidate,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "candidate" => Ok(GeneratedField::Candidate),
+                            _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = TrickleIceRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct veil.TrickleIceRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<TrickleIceRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut candidate__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Candidate => {
+                            if candidate__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("candidate"));
+                            }
+                            candidate__ = map_.next_value()?;
+                        }
+                    }
+                }
+                Ok(TrickleIceRequest {
+                    candidate: candidate__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("veil.TrickleIceRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for TrickleIceResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.candidate.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("veil.TrickleIceResponse", len)?;
+        if let Some(v) = self.candidate.as_ref() {
+            struct_ser.serialize_field("candidate", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for TrickleIceResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "candidate",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Candidate,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "candidate" => Ok(GeneratedField::Candidate),
+                            _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = TrickleIceResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct veil.TrickleIceResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<TrickleIceResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut candidate__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Candidate => {
+                            if candidate__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("candidate"));
+                            }
+                            candidate__ = map_.next_value()?;
+                        }
+                    }
+                }
+                Ok(TrickleIceResponse {
+                    candidate: candidate__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("veil.TrickleIceResponse", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for VideoStream {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -1515,6 +1703,7 @@ impl serde::Serialize for video_stream::Codec {
         S: serde::Serializer,
     {
         let variant = match self {
+            Self::Unspecified => "CODEC_UNSPECIFIED",
             Self::Avc => "AVC",
             Self::Hevc => "HEVC",
             Self::Av1 => "AV1",
@@ -1531,6 +1720,7 @@ impl<'de> serde::Deserialize<'de> for video_stream::Codec {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
+            "CODEC_UNSPECIFIED",
             "AVC",
             "HEVC",
             "AV1",
@@ -1576,6 +1766,7 @@ impl<'de> serde::Deserialize<'de> for video_stream::Codec {
                 E: serde::de::Error,
             {
                 match value {
+                    "CODEC_UNSPECIFIED" => Ok(video_stream::Codec::Unspecified),
                     "AVC" => Ok(video_stream::Codec::Avc),
                     "HEVC" => Ok(video_stream::Codec::Hevc),
                     "AV1" => Ok(video_stream::Codec::Av1),

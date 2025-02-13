@@ -1,17 +1,18 @@
+// buf:lint:ignore RPC_REQUEST_STANDARD_NAME
 syntax = "proto3";
 
 package veil;
 
 import "webrtc.proto";
 
-service Veil {
+service RTCService {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
 
   rpc SetAnswer(SetAnswerRequest) returns (SetAnswerResponse);
 
   rpc Renegotiate(RenegotiateRequest) returns (RenegotiateResponse);
 
-  rpc TrickleIce(stream webrtc.IceCandidate) returns (stream webrtc.IceCandidate);
+  rpc TrickleIce(stream TrickleIceRequest) returns (stream TrickleIceResponse);
 }
 
 message CreateSessionRequest {}
@@ -29,4 +30,12 @@ message RenegotiateRequest {
 }
 message RenegotiateResponse {
   webrtc.SessionDescription answer = 1;
+}
+
+message TrickleIceRequest {
+  webrtc.IceCandidate candidate = 1;
+}
+
+message TrickleIceResponse {
+  webrtc.IceCandidate candidate = 1;
 }

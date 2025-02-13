@@ -26,11 +26,12 @@ pub mod video_stream {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
     pub enum Codec {
-        Avc = 0,
-        Hevc = 1,
-        Av1 = 2,
-        Vp8 = 3,
-        Vp9 = 4,
+        Unspecified = 0,
+        Avc = 1,
+        Hevc = 2,
+        Av1 = 3,
+        Vp8 = 4,
+        Vp9 = 5,
     }
     impl Codec {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -39,6 +40,7 @@ pub mod video_stream {
         /// (if the ProtoBuf definition does not change) and safe for programmatic use.
         pub fn as_str_name(&self) -> &'static str {
             match self {
+                Self::Unspecified => "CODEC_UNSPECIFIED",
                 Self::Avc => "AVC",
                 Self::Hevc => "HEVC",
                 Self::Av1 => "AV1",
@@ -49,6 +51,7 @@ pub mod video_stream {
         /// Creates an enum from field names used in the ProtoBuf definition.
         pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
             match value {
+                "CODEC_UNSPECIFIED" => Some(Self::Unspecified),
                 "AVC" => Some(Self::Avc),
                 "HEVC" => Some(Self::Hevc),
                 "AV1" => Some(Self::Av1),
@@ -71,18 +74,19 @@ pub mod audio_stream {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
     pub enum Channel {
-        Mono = 0,
-        FrontLeft = 1,
-        FrontRight = 2,
-        FrontCenter = 3,
-        RearCenter = 4,
-        RearLeft = 5,
-        RearRight = 6,
-        Lfe = 7,
-        FrontLeftOfCenter = 8,
-        FrontRightOfCenter = 9,
-        SideLeft = 10,
-        SideRight = 11,
+        Unspecified = 0,
+        Mono = 1,
+        FrontLeft = 2,
+        FrontRight = 3,
+        FrontCenter = 4,
+        RearCenter = 5,
+        RearLeft = 6,
+        RearRight = 7,
+        Lfe = 8,
+        FrontLeftOfCenter = 9,
+        FrontRightOfCenter = 10,
+        SideLeft = 11,
+        SideRight = 12,
     }
     impl Channel {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -91,6 +95,7 @@ pub mod audio_stream {
         /// (if the ProtoBuf definition does not change) and safe for programmatic use.
         pub fn as_str_name(&self) -> &'static str {
             match self {
+                Self::Unspecified => "CHANNEL_UNSPECIFIED",
                 Self::Mono => "MONO",
                 Self::FrontLeft => "FRONT_LEFT",
                 Self::FrontRight => "FRONT_RIGHT",
@@ -108,6 +113,7 @@ pub mod audio_stream {
         /// Creates an enum from field names used in the ProtoBuf definition.
         pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
             match value {
+                "CHANNEL_UNSPECIFIED" => Some(Self::Unspecified),
                 "MONO" => Some(Self::Mono),
                 "FRONT_LEFT" => Some(Self::FrontLeft),
                 "FRONT_RIGHT" => Some(Self::FrontRight),
@@ -127,7 +133,8 @@ pub mod audio_stream {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
     pub enum Codec {
-        Opus = 0,
+        Unspecified = 0,
+        Opus = 1,
     }
     impl Codec {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -136,12 +143,14 @@ pub mod audio_stream {
         /// (if the ProtoBuf definition does not change) and safe for programmatic use.
         pub fn as_str_name(&self) -> &'static str {
             match self {
+                Self::Unspecified => "CODEC_UNSPECIFIED",
                 Self::Opus => "OPUS",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
         pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
             match value {
+                "CODEC_UNSPECIFIED" => Some(Self::Unspecified),
                 "OPUS" => Some(Self::Opus),
                 _ => None,
             }
@@ -173,7 +182,7 @@ pub mod gamepad {
         /// (if the ProtoBuf definition does not change) and safe for programmatic use.
         pub fn as_str_name(&self) -> &'static str {
             match self {
-                Self::Unspecified => "UNSPECIFIED",
+                Self::Unspecified => "MAPPING_UNSPECIFIED",
                 Self::Standard => "STANDARD",
                 Self::StandardXr => "STANDARD_XR",
             }
@@ -181,7 +190,7 @@ pub mod gamepad {
         /// Creates an enum from field names used in the ProtoBuf definition.
         pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
             match value {
-                "UNSPECIFIED" => Some(Self::Unspecified),
+                "MAPPING_UNSPECIFIED" => Some(Self::Unspecified),
                 "STANDARD" => Some(Self::Standard),
                 "STANDARD_XR" => Some(Self::StandardXr),
                 _ => None,
@@ -253,6 +262,16 @@ pub struct RenegotiateRequest {
 pub struct RenegotiateResponse {
     #[prost(message, optional, tag="1")]
     pub answer: ::core::option::Option<webrtc::SessionDescription>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TrickleIceRequest {
+    #[prost(message, optional, tag="1")]
+    pub candidate: ::core::option::Option<webrtc::IceCandidate>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TrickleIceResponse {
+    #[prost(message, optional, tag="1")]
+    pub candidate: ::core::option::Option<webrtc::IceCandidate>,
 }
 include!("veil.serde.rs");
 include!("veil.tonic.rs");

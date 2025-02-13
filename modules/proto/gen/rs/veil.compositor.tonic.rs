@@ -1,6 +1,6 @@
 // @generated
 /// Generated client implementations.
-pub mod compositor_client {
+pub mod compositor_service_client {
     #![allow(
         unused_variables,
         dead_code,
@@ -11,10 +11,10 @@ pub mod compositor_client {
     use tonic::codegen::*;
     use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
-    pub struct CompositorClient<T> {
+    pub struct CompositorServiceClient<T> {
         inner: tonic::client::Grpc<T>,
     }
-    impl CompositorClient<tonic::transport::Channel> {
+    impl CompositorServiceClient<tonic::transport::Channel> {
         /// Attempt to create a new client by connecting to a given endpoint.
         pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
         where
@@ -25,7 +25,7 @@ pub mod compositor_client {
             Ok(Self::new(conn))
         }
     }
-    impl<T> CompositorClient<T>
+    impl<T> CompositorServiceClient<T>
     where
         T: tonic::client::GrpcService<tonic::body::BoxBody>,
         T::Error: Into<StdError>,
@@ -43,7 +43,7 @@ pub mod compositor_client {
         pub fn with_interceptor<F>(
             inner: T,
             interceptor: F,
-        ) -> CompositorClient<InterceptedService<T, F>>
+        ) -> CompositorServiceClient<InterceptedService<T, F>>
         where
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
@@ -57,7 +57,7 @@ pub mod compositor_client {
                 http::Request<tonic::body::BoxBody>,
             >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
-            CompositorClient::new(InterceptedService::new(inner, interceptor))
+            CompositorServiceClient::new(InterceptedService::new(inner, interceptor))
         }
         /// Compress requests with the given encoding.
         ///
@@ -107,17 +107,19 @@ pub mod compositor_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/veil.compositor.Compositor/StartSession",
+                "/veil.compositor.CompositorService/StartSession",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("veil.compositor.Compositor", "StartSession"));
+                .insert(
+                    GrpcMethod::new("veil.compositor.CompositorService", "StartSession"),
+                );
             self.inner.unary(req, path, codec).await
         }
     }
 }
 /// Generated server implementations.
-pub mod compositor_server {
+pub mod compositor_service_server {
     #![allow(
         unused_variables,
         dead_code,
@@ -126,9 +128,9 @@ pub mod compositor_server {
         clippy::let_unit_value,
     )]
     use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with CompositorServer.
+    /// Generated trait containing gRPC methods that should be implemented for use with CompositorServiceServer.
     #[async_trait]
-    pub trait Compositor: std::marker::Send + std::marker::Sync + 'static {
+    pub trait CompositorService: std::marker::Send + std::marker::Sync + 'static {
         async fn start_session(
             &self,
             request: tonic::Request<super::StartSessionRequest>,
@@ -138,14 +140,14 @@ pub mod compositor_server {
         >;
     }
     #[derive(Debug)]
-    pub struct CompositorServer<T> {
+    pub struct CompositorServiceServer<T> {
         inner: Arc<T>,
         accept_compression_encodings: EnabledCompressionEncodings,
         send_compression_encodings: EnabledCompressionEncodings,
         max_decoding_message_size: Option<usize>,
         max_encoding_message_size: Option<usize>,
     }
-    impl<T> CompositorServer<T> {
+    impl<T> CompositorServiceServer<T> {
         pub fn new(inner: T) -> Self {
             Self::from_arc(Arc::new(inner))
         }
@@ -196,9 +198,9 @@ pub mod compositor_server {
             self
         }
     }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for CompositorServer<T>
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for CompositorServiceServer<T>
     where
-        T: Compositor,
+        T: CompositorService,
         B: Body + std::marker::Send + 'static,
         B::Error: Into<StdError> + std::marker::Send + 'static,
     {
@@ -213,11 +215,11 @@ pub mod compositor_server {
         }
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             match req.uri().path() {
-                "/veil.compositor.Compositor/StartSession" => {
+                "/veil.compositor.CompositorService/StartSession" => {
                     #[allow(non_camel_case_types)]
-                    struct StartSessionSvc<T: Compositor>(pub Arc<T>);
+                    struct StartSessionSvc<T: CompositorService>(pub Arc<T>);
                     impl<
-                        T: Compositor,
+                        T: CompositorService,
                     > tonic::server::UnaryService<super::StartSessionRequest>
                     for StartSessionSvc<T> {
                         type Response = super::StartSessionResponse;
@@ -231,7 +233,8 @@ pub mod compositor_server {
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as Compositor>::start_session(&inner, request).await
+                                <T as CompositorService>::start_session(&inner, request)
+                                    .await
                             };
                             Box::pin(fut)
                         }
@@ -278,7 +281,7 @@ pub mod compositor_server {
             }
         }
     }
-    impl<T> Clone for CompositorServer<T> {
+    impl<T> Clone for CompositorServiceServer<T> {
         fn clone(&self) -> Self {
             let inner = self.inner.clone();
             Self {
@@ -291,8 +294,8 @@ pub mod compositor_server {
         }
     }
     /// Generated gRPC service name
-    pub const SERVICE_NAME: &str = "veil.compositor.Compositor";
-    impl<T> tonic::server::NamedService for CompositorServer<T> {
+    pub const SERVICE_NAME: &str = "veil.compositor.CompositorService";
+    impl<T> tonic::server::NamedService for CompositorServiceServer<T> {
         const NAME: &'static str = SERVICE_NAME;
     }
 }

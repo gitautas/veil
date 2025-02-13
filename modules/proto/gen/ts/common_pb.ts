@@ -104,7 +104,7 @@ export class VideoStream extends Message<VideoStream> {
   /**
    * @generated from field: veil.VideoStream.Codec codec = 2;
    */
-  codec = VideoStream_Codec.AVC;
+  codec = VideoStream_Codec.CODEC_UNSPECIFIED;
 
   constructor(data?: PartialMessage<VideoStream>) {
     super();
@@ -140,37 +140,43 @@ export class VideoStream extends Message<VideoStream> {
  */
 export enum VideoStream_Codec {
   /**
-   * @generated from enum value: AVC = 0;
+   * @generated from enum value: CODEC_UNSPECIFIED = 0;
    */
-  AVC = 0,
+  CODEC_UNSPECIFIED = 0,
 
   /**
-   * @generated from enum value: HEVC = 1;
+   * @generated from enum value: AVC = 1;
    */
-  HEVC = 1,
+  AVC = 1,
 
   /**
-   * @generated from enum value: AV1 = 2;
+   * @generated from enum value: HEVC = 2;
    */
-  AV1 = 2,
+  HEVC = 2,
 
   /**
-   * @generated from enum value: VP8 = 3;
+   * @generated from enum value: AV1 = 3;
    */
-  VP8 = 3,
+  AV1 = 3,
 
   /**
-   * @generated from enum value: VP9 = 4;
+   * @generated from enum value: VP8 = 4;
    */
-  VP9 = 4,
+  VP8 = 4,
+
+  /**
+   * @generated from enum value: VP9 = 5;
+   */
+  VP9 = 5,
 }
 // Retrieve enum metadata with: proto3.getEnumType(VideoStream_Codec)
 proto3.util.setEnumType(VideoStream_Codec, "veil.VideoStream.Codec", [
-  { no: 0, name: "AVC" },
-  { no: 1, name: "HEVC" },
-  { no: 2, name: "AV1" },
-  { no: 3, name: "VP8" },
-  { no: 4, name: "VP9" },
+  { no: 0, name: "CODEC_UNSPECIFIED" },
+  { no: 1, name: "AVC" },
+  { no: 2, name: "HEVC" },
+  { no: 3, name: "AV1" },
+  { no: 4, name: "VP8" },
+  { no: 5, name: "VP9" },
 ]);
 
 /**
@@ -180,7 +186,7 @@ export class AudioStream extends Message<AudioStream> {
   /**
    * @generated from field: veil.AudioStream.Codec encoding = 1;
    */
-  encoding = AudioStream_Codec.OPUS;
+  encoding = AudioStream_Codec.CODEC_UNSPECIFIED;
 
   /**
    * @generated from field: repeated veil.AudioStream.Channel channels = 2;
@@ -221,79 +227,85 @@ export class AudioStream extends Message<AudioStream> {
  */
 export enum AudioStream_Channel {
   /**
-   * @generated from enum value: MONO = 0;
+   * @generated from enum value: CHANNEL_UNSPECIFIED = 0;
    */
-  MONO = 0,
+  CHANNEL_UNSPECIFIED = 0,
 
   /**
-   * @generated from enum value: FRONT_LEFT = 1;
+   * @generated from enum value: MONO = 1;
    */
-  FRONT_LEFT = 1,
+  MONO = 1,
 
   /**
-   * @generated from enum value: FRONT_RIGHT = 2;
+   * @generated from enum value: FRONT_LEFT = 2;
    */
-  FRONT_RIGHT = 2,
+  FRONT_LEFT = 2,
 
   /**
-   * @generated from enum value: FRONT_CENTER = 3;
+   * @generated from enum value: FRONT_RIGHT = 3;
    */
-  FRONT_CENTER = 3,
+  FRONT_RIGHT = 3,
 
   /**
-   * @generated from enum value: REAR_CENTER = 4;
+   * @generated from enum value: FRONT_CENTER = 4;
    */
-  REAR_CENTER = 4,
+  FRONT_CENTER = 4,
 
   /**
-   * @generated from enum value: REAR_LEFT = 5;
+   * @generated from enum value: REAR_CENTER = 5;
    */
-  REAR_LEFT = 5,
+  REAR_CENTER = 5,
 
   /**
-   * @generated from enum value: REAR_RIGHT = 6;
+   * @generated from enum value: REAR_LEFT = 6;
    */
-  REAR_RIGHT = 6,
+  REAR_LEFT = 6,
 
   /**
-   * @generated from enum value: LFE = 7;
+   * @generated from enum value: REAR_RIGHT = 7;
    */
-  LFE = 7,
+  REAR_RIGHT = 7,
 
   /**
-   * @generated from enum value: FRONT_LEFT_OF_CENTER = 8;
+   * @generated from enum value: LFE = 8;
    */
-  FRONT_LEFT_OF_CENTER = 8,
+  LFE = 8,
 
   /**
-   * @generated from enum value: FRONT_RIGHT_OF_CENTER = 9;
+   * @generated from enum value: FRONT_LEFT_OF_CENTER = 9;
    */
-  FRONT_RIGHT_OF_CENTER = 9,
+  FRONT_LEFT_OF_CENTER = 9,
 
   /**
-   * @generated from enum value: SIDE_LEFT = 10;
+   * @generated from enum value: FRONT_RIGHT_OF_CENTER = 10;
    */
-  SIDE_LEFT = 10,
+  FRONT_RIGHT_OF_CENTER = 10,
 
   /**
-   * @generated from enum value: SIDE_RIGHT = 11;
+   * @generated from enum value: SIDE_LEFT = 11;
    */
-  SIDE_RIGHT = 11,
+  SIDE_LEFT = 11,
+
+  /**
+   * @generated from enum value: SIDE_RIGHT = 12;
+   */
+  SIDE_RIGHT = 12,
 }
 // Retrieve enum metadata with: proto3.getEnumType(AudioStream_Channel)
 proto3.util.setEnumType(AudioStream_Channel, "veil.AudioStream.Channel", [
-  { no: 0, name: "MONO" },
-  { no: 1, name: "FRONT_LEFT" },
-  { no: 2, name: "FRONT_RIGHT" },
-  { no: 3, name: "FRONT_CENTER" },
-  { no: 4, name: "REAR_CENTER" },
-  { no: 5, name: "REAR_LEFT" },
-  { no: 6, name: "REAR_RIGHT" },
-  { no: 7, name: "LFE" },
-  { no: 8, name: "FRONT_LEFT_OF_CENTER" },
-  { no: 9, name: "FRONT_RIGHT_OF_CENTER" },
-  { no: 10, name: "SIDE_LEFT" },
-  { no: 11, name: "SIDE_RIGHT" },
+  { no: 0, name: "CHANNEL_UNSPECIFIED" },
+  { no: 1, name: "MONO" },
+  { no: 2, name: "FRONT_LEFT" },
+  { no: 3, name: "FRONT_RIGHT" },
+  { no: 4, name: "FRONT_CENTER" },
+  { no: 5, name: "REAR_CENTER" },
+  { no: 6, name: "REAR_LEFT" },
+  { no: 7, name: "REAR_RIGHT" },
+  { no: 8, name: "LFE" },
+  { no: 9, name: "FRONT_LEFT_OF_CENTER" },
+  { no: 10, name: "FRONT_RIGHT_OF_CENTER" },
+  { no: 11, name: "SIDE_LEFT" },
+  { no: 12, name: "SIDE_RIGHT" },
 ]);
 
 /**
@@ -301,13 +313,19 @@ proto3.util.setEnumType(AudioStream_Channel, "veil.AudioStream.Channel", [
  */
 export enum AudioStream_Codec {
   /**
-   * @generated from enum value: OPUS = 0;
+   * @generated from enum value: CODEC_UNSPECIFIED = 0;
    */
-  OPUS = 0,
+  CODEC_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: OPUS = 1;
+   */
+  OPUS = 1,
 }
 // Retrieve enum metadata with: proto3.getEnumType(AudioStream_Codec)
 proto3.util.setEnumType(AudioStream_Codec, "veil.AudioStream.Codec", [
-  { no: 0, name: "OPUS" },
+  { no: 0, name: "CODEC_UNSPECIFIED" },
+  { no: 1, name: "OPUS" },
 ]);
 
 /**
@@ -327,7 +345,7 @@ export class Gamepad extends Message<Gamepad> {
   /**
    * @generated from field: veil.Gamepad.Mapping mapping = 3;
    */
-  mapping = Gamepad_Mapping.UNSPECIFIED;
+  mapping = Gamepad_Mapping.MAPPING_UNSPECIFIED;
 
   constructor(data?: PartialMessage<Gamepad>) {
     super();
@@ -364,9 +382,9 @@ export class Gamepad extends Message<Gamepad> {
  */
 export enum Gamepad_Mapping {
   /**
-   * @generated from enum value: UNSPECIFIED = 0;
+   * @generated from enum value: MAPPING_UNSPECIFIED = 0;
    */
-  UNSPECIFIED = 0,
+  MAPPING_UNSPECIFIED = 0,
 
   /**
    * @generated from enum value: STANDARD = 1;
@@ -380,7 +398,7 @@ export enum Gamepad_Mapping {
 }
 // Retrieve enum metadata with: proto3.getEnumType(Gamepad_Mapping)
 proto3.util.setEnumType(Gamepad_Mapping, "veil.Gamepad.Mapping", [
-  { no: 0, name: "UNSPECIFIED" },
+  { no: 0, name: "MAPPING_UNSPECIFIED" },
   { no: 1, name: "STANDARD" },
   { no: 2, name: "STANDARD_XR" },
 ]);

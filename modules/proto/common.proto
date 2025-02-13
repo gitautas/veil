@@ -14,11 +14,12 @@ message Display {
 
 message VideoStream {
   enum Codec {
-    AVC = 0;
-    HEVC = 1;
-    AV1 = 2;
-    VP8 = 3;
-    VP9 = 4;
+    CODEC_UNSPECIFIED = 0;
+    AVC = 1;
+    HEVC = 2;
+    AV1 = 3;
+    VP8 = 4;
+    VP9 = 5;
   }
 
   Display display = 1;
@@ -27,22 +28,24 @@ message VideoStream {
 
 message AudioStream {
   enum Channel {
-    MONO = 0;
-    FRONT_LEFT = 1;
-    FRONT_RIGHT = 2;
-    FRONT_CENTER = 3;
-    REAR_CENTER = 4;
-    REAR_LEFT = 5;
-    REAR_RIGHT = 6;
-    LFE = 7;
-    FRONT_LEFT_OF_CENTER = 8;
-    FRONT_RIGHT_OF_CENTER = 9;
-    SIDE_LEFT = 10;
-    SIDE_RIGHT = 11;
+    CHANNEL_UNSPECIFIED = 0;
+    MONO = 1;
+    FRONT_LEFT = 2;
+    FRONT_RIGHT = 3;
+    FRONT_CENTER = 4;
+    REAR_CENTER = 5;
+    REAR_LEFT = 6;
+    REAR_RIGHT = 7;
+    LFE = 8;
+    FRONT_LEFT_OF_CENTER = 9;
+    FRONT_RIGHT_OF_CENTER = 10;
+    SIDE_LEFT = 11;
+    SIDE_RIGHT = 12;
   }
 
   enum Codec {
-    OPUS = 0;
+    CODEC_UNSPECIFIED = 0;
+    OPUS = 1;
   }
 
   Codec encoding = 1;
@@ -51,7 +54,7 @@ message AudioStream {
 
 message Gamepad {
   enum Mapping {
-    UNSPECIFIED = 0;
+    MAPPING_UNSPECIFIED = 0;
     STANDARD = 1;
     STANDARD_XR = 2;
   }

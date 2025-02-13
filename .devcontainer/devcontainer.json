@@ -21,18 +21,12 @@
         "direnv.path.executable": "/home/veildev/.direnv/direnv"
       },
       "extensions": [
-        "ms-vscode.cpptools",
-        "mkhl.direnv",
         "1YiB.rust-bundle",
         "bierner.markdown-mermaid",
         "tamasfe.even-better-toml",
-        "zxh404.vscode-proto3",
-        "idered.npm",
         "jcreamer.vscode-monorepo-tools",
-        "mkhl.shfmt",
         "dbaeumer.vscode-eslint",
         "bufbuild.vscode-buf",
-        "rust-lang.rust-analyzer",
         "rvest.vs-code-prettier-eslint"
       ]
     }

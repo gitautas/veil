@@ -1,8 +1,11 @@
 [package]
-name = "@veil/proto"
+name = "veil_proto"
 version = "0.0.0"
 edition = "2021"
-include = ["gen/rs"]
+
+[lib]
+name = "veil_proto"
+path = "gen/rs/mod.rs"
 
 [dependencies]
 bytes = "1.1.0"

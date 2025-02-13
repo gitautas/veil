@@ -3,7 +3,7 @@ export interface VeilSessionDescription {
   command: string[];
 
   // Virtual display parameters
-  display: Display
+  display: Display;
 }
 
 interface Display {

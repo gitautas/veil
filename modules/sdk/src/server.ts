@@ -1,9 +1,9 @@
-import * as ser from "@veil/proto";
+import * as pb from "@veil/proto";
 
 export class Server {
-  private readonly server: ser.Server;
+  private readonly server: pb.RTCServiceServer;
 
   constructor() {
-    this.server = new ser.Server();
+    this.server = new Server();
   }
 }

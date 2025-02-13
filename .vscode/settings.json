@@ -1,6 +1,7 @@
 {
   "eslint.format.enable": true,
   "eslint.useFlatConfig": true,
+  "eslint.workingDirectories": [{ "mode": "auto" }],
   "editor.defaultFormatter": "rvest.vs-code-prettier-eslint",
   "editor.formatOnType": false,
   "editor.formatOnPaste": true,
@@ -10,5 +11,8 @@
   "vs-code-prettier-eslint.prettierLast": false,
   "[rust]": {
     "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "[proto]": {
+    "editor.defaultFormatter": "bufbuild.vscode-buf"
   }
 }

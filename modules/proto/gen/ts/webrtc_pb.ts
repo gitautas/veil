@@ -13,7 +13,7 @@ export class SessionDescription extends Message<SessionDescription> {
   /**
    * @generated from field: veil.webrtc.SessionDescription.Type type = 1;
    */
-  type = SessionDescription_Type.UNSPECIFIED;
+  type = SessionDescription_Type.SDP_UNSPECIFIED;
 
   /**
    * @generated from field: string sdp = 2;
@@ -54,9 +54,9 @@ export class SessionDescription extends Message<SessionDescription> {
  */
 export enum SessionDescription_Type {
   /**
-   * @generated from enum value: UNSPECIFIED = 0;
+   * @generated from enum value: SDP_UNSPECIFIED = 0;
    */
-  UNSPECIFIED = 0,
+  SDP_UNSPECIFIED = 0,
 
   /**
    * @generated from enum value: OFFER = 1;
@@ -70,7 +70,7 @@ export enum SessionDescription_Type {
 }
 // Retrieve enum metadata with: proto3.getEnumType(SessionDescription_Type)
 proto3.util.setEnumType(SessionDescription_Type, "veil.webrtc.SessionDescription.Type", [
-  { no: 0, name: "UNSPECIFIED" },
+  { no: 0, name: "SDP_UNSPECIFIED" },
   { no: 1, name: "OFFER" },
   { no: 2, name: "ANSWER" },
 ]);
