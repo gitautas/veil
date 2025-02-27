@@ -1,25 +1,15 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "target/**"],
-      "cache": false
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
-    "lint": {
-      "dependsOn": ["^lint"],
-      "cache": false
-    },
+    "lint": {},
     "dev": {
-      "dependsOn": ["@veil/proto#generate"],
-      "persistent": true,
-      "cache": false
-    },
-    "clean": {
-      "cache": false
-    },
-    "generate": {
-      "cache": false
+      "cache": false,
+      "persistent": true
     }
   }
 }

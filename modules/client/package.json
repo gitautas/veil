@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "vite --clearScreen false",
+    "build": "tsc -b && vite build --clearScreen false",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "preview": "vite preview --clearScreen false",
     "clean": "rm -rf dist node_modules/.vite"
   },
   "dependencies": {

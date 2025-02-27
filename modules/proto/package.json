@@ -13,11 +13,11 @@
     }
   },
   "scripts": {
-    "prebuild": "buf generate",
-    "build": "tsc -b",
+    "prebuild": "pnpm generate && tsc -b && cargo build",
+    "build": "tsc -b && cargo build",
     "generate": "buf generate",
     "predev": "pnpm generate",
-    "dev": "watchexec --watch ./ --exts proto --clear -- buf generate",
+    "dev": "watchexec --watch ./ --exts proto -- 'buf generate && tsc -b && cargo build'",
     "lint": "buf lint",
     "clean": "rm -rf gen",
     "format": "buf format -w",

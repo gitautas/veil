@@ -9,7 +9,11 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "clean": "turbo run clean"
+    "clean": "echo \"Cleaning Rust artifacts...\" && pnpm rust-clean && echo \"Cleaning module artifacts...\" && pnpm run clean-proto && pnpm run clean-client && pnpm run clean-sdk",
+    "clean-proto": "cd modules/proto && rm -rf gen",
+    "clean-client": "cd modules/client && rm -rf dist node_modules/.vite",
+    "clean-sdk": "cd modules/sdk && rm -rf dist",
+    "rust-clean": "cargo clean && rm -rf target"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",

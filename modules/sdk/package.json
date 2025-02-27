@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "eslint .",
-    "dev": "tsx watch --clear-screen=true ./src/index.ts",
+    "dev": "tsx watch --clear-screen=false ./src/index.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {

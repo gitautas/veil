@@ -1,8 +1,7 @@
 {
   "name": "@veil/compositor",
   "scripts": {
-    "build": "cargo build --release",
-    "dev": "watchexec -w src -e rs -c -- cargo build",
-    "clean": "cargo clean || true"
+    "build": "cargo build",
+    "dev": "watchexec -w src -e rs -- cargo build"
   }
 }

@@ -1,9 +1,8 @@
 {
   "name": "@veil/server",
   "scripts": {
-    "build": "cargo build --release",
-    "dev": "watchexec -w src -e rs -r -c -- cargo run",
-    "clean": "cargo clean || true"
+    "build": "cargo build",
+    "dev": "watchexec -w src -e rs -r -- cargo run"
   },
   "dependencies": {
     "@veil/compositor": "workspace:*",

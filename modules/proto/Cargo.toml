@@ -5,7 +5,7 @@ edition = "2021"
 
 [lib]
 name = "veil_proto"
-path = "gen/rs/mod.rs"
+path = "lib.rs"
 
 [dependencies]
 bytes = "1.1.0"
