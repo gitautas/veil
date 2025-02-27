@@ -1,1 +1,32 @@
-echo "This echo should be doing linting and testing and all kinds of good stuff."
+#!/usr/bin/env sh
+
+# Get changed files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(js|jsx|ts|tsx|json|css|scss|md|rs|proto)$' || true)
+
+# Skip if no relevant files are staged
+if [ -z "$STAGED_FILES" ]; then
+  echo "No files to check. Skipping pre-commit hooks."
+  exit 0
+fi
+
+# Run lint on changed files only
+echo "Running lint checks on staged files..."
+pnpm lint --filter=[HEAD] --no-daemon
+
+# Exit with error code if linting fails
+if [ $? -ne 0 ]; then
+  echo "❌ Linting failed. Please fix the issues before committing."
+  exit 1
+fi
+
+# Check formatting
+echo "Checking code formatting..."
+pnpm prettier --check "$(echo "$STAGED_FILES" | tr '\n' ' ')" || true
+if [ $? -ne 0 ]; then
+  echo "⚠️ Some files need formatting. Running prettier to fix..."
+  pnpm prettier --write "$(echo "$STAGED_FILES" | tr '\n' ' ')"
+  echo "✅ Formatting fixed. Please review and stage the formatting changes."
+  exit 1
+fi
+
+echo "✅ Pre-commit checks passed!"

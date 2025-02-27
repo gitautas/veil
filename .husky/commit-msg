@@ -1,1 +1,13 @@
+#!/usr/bin/env sh
+
+# Validate commit message
+echo "Validating commit message format..."
 npx --no -- commitlint --edit $1
+
+# Exit with error code if validation fails
+if [ $? -ne 0 ]; then
+  echo "❌ Commit message validation failed. Please fix the message format."
+  exit 1
+fi
+
+echo "✅ Commit message format is valid!"
