@@ -10,6 +10,50 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "@veil/proto#build": {
+      "outputs": ["gen/**"]
+    },
+    "@veil/proto#dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@veil/sdk#build": {
+      "dependsOn": ["@veil/proto#build"],
+      "outputs": ["dist/**"]
+    },
+    "@veil/sdk#dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@veil/compositor#build": {
+      "dependsOn": ["@veil/proto#build"]
+    },
+    "@veil/compositor#dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@veil/encoder#build": {
+      "dependsOn": ["@veil/proto#build"]
+    },
+    "@veil/encoder#dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@veil/server#build": {
+      "dependsOn": ["@veil/proto#build", "@veil/compositor#build", "@veil/encoder#build", "@veil/sdk#build"]
+    },
+    "@veil/server#dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@veil/client#build": {
+      "dependsOn": ["@veil/proto#build", "@veil/sdk#build", "@veil/server#build"],
+      "outputs": ["dist/**"]
+    },
+    "@veil/client#dev": {
+      "cache": false,
+      "persistent": true
     }
   }
 }
