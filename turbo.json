@@ -11,10 +11,14 @@
       "cache": false
     },
     "dev": {
+      "dependsOn": ["@veil/proto#generate"],
       "persistent": true,
       "cache": false
     },
     "clean": {
+      "cache": false
+    },
+    "generate": {
       "cache": false
     }
   }

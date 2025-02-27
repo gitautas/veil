@@ -3,6 +3,6 @@
   "scripts": {
     "build": "cargo build --release",
     "dev": "watchexec -w src -e rs -r -c -- cargo build",
-    "clean": "cargo clean"
+    "clean": "cargo clean || true"
   }
 }

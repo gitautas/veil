@@ -15,9 +15,13 @@
   "scripts": {
     "prebuild": "buf generate",
     "build": "tsc -b",
+    "generate": "buf generate",
+    "predev": "pnpm generate",
+    "dev": "watchexec --watch ./ --exts proto --clear -- buf generate",
     "lint": "buf lint",
     "clean": "rm -rf gen",
-    "format": "buf format -w"
+    "format": "buf format -w",
+    "todo": "# TODO: Re-enable Rust code generation in buf.gen.yaml once remote plugin access is configured"
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.29.0",

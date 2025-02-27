@@ -3,10 +3,11 @@
   "scripts": {
     "build": "cargo build --release",
     "dev": "watchexec -w src -e rs -r -c -- cargo run",
-    "clean": "cargo clean"
+    "clean": "cargo clean || true"
   },
   "dependencies": {
     "@veil/compositor": "workspace:*",
-    "@veil/encoder": "workspace:*"
+    "@veil/encoder": "workspace:*",
+    "@veil/proto": "workspace:*"
   }
 }

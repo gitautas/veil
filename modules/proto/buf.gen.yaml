@@ -4,23 +4,24 @@ clean: true
 
 plugins:
   # TypeScript
-  - plugin: buf.build/protocolbuffers/es
+  - local: protoc-gen-es
     out: gen/ts
     opt:
       - target=ts
       - import_extension=.js
 
-  # Rust
-  - plugin: buf.build/community/neoeinstein-prost:v0.3.1
-    out: gen/rs
-    opt:
-      - bytes=bytes
-      - file_descriptor_set
+  # Rust plugins commented out temporarily to unblock development
+  # Uncomment when remote plugin access is configured
+  # - remote: buf.build/community/neoeinstein-prost:v0.3.1
+  #   out: gen/rs
+  #   opt:
+  #     - bytes=bytes
+  #     - file_descriptor_set
 
-  - plugin: buf.build/community/neoeinstein-tonic:v0.3.1
-    out: gen/rs
-    opt:
-      - compile_well_known_types
+  # - remote: buf.build/community/neoeinstein-tonic:v0.3.1
+  #   out: gen/rs
+  #   opt:
+  #     - compile_well_known_types
 
 inputs:
   - directory: .
