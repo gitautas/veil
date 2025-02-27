@@ -4,14 +4,13 @@ ARG USERNAME=veildev
 ARG WORKSPACE=/workspaces/veil
 ARG UID=1000
 ARG GID=1000
-ARG WORKSPACE=/workspaces/veil
 ARG DEBIAN_FRONTEND=noninteractive
 ################################## Base Devcontainer ####################################################
 # Enable source, contrib and non-free repositories, upgrade packages and install basic utilities
 RUN sed -i -e "s/main/main contrib non-free non-free-firmware/g" -e "s/Types: deb/Types: deb deb-src/g" \
-    /etc/apt/sources.list.d/debian.sources && apt update && apt upgrade -y
+    /etc/apt/sources.list.d/debian.sources 
 
-RUN apt install -y apt-transport-https apt-utils ca-certificates curl dialog \
+RUN apt update && apt upgrade -y && apt install -y apt-transport-https apt-utils ca-certificates curl dialog \
     git git-lfs gnupg2 htop iproute2 jq less libc6 libgssapi-krb5-2 \
     libkrb5-3 libstdc++6 locales lsb-release lsof man-db manpages \
     manpages-dev nano ncdu net-tools openssh-client procps psmisc \

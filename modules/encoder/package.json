@@ -2,6 +2,7 @@
   "name": "@veil/encoder",
   "scripts": {
     "build": "cargo build --release",
-    "dev": "cargo build"
+    "dev": "watchexec -w src -e rs -r -c -- cargo build",
+    "clean": "cargo clean"
   }
 }

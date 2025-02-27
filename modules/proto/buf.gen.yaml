@@ -3,22 +3,24 @@ version: v2
 clean: true
 
 plugins:
-  - local: protoc-gen-es
+  # TypeScript
+  - plugin: buf.build/protocolbuffers/es
     out: gen/ts
-    opt: target=ts
+    opt:
+      - target=ts
+      - import_extension=.js
 
-  - local: protoc-gen-prost
+  # Rust
+  - plugin: buf.build/community/neoeinstein-prost:v0.3.1
     out: gen/rs
+    opt:
+      - bytes=bytes
+      - file_descriptor_set
 
-  - local: protoc-gen-prost-serde
+  - plugin: buf.build/community/neoeinstein-tonic:v0.3.1
     out: gen/rs
-
-  - local: protoc-gen-tonic
-    out: gen/rs
-
-  - local: protoc-gen-prost-crate
-    out: gen/rs
-    opt: no_features=true
+    opt:
+      - compile_well_known_types
 
 inputs:
   - directory: .

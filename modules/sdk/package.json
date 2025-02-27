@@ -10,13 +10,17 @@
     ".": "./src/*.ts"
   },
   "scripts": {
-    "build": "pnpm tsc -b",
-    "lint": "pnpm eslint .",
-    "dev": "pnpm tsc --watch -b"
+    "build": "tsc",
+    "lint": "eslint .",
+    "dev": "tsx watch --clear-screen=true ./src/index.ts",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "@veil/proto": "workspace:*",
     "@connectrpc/connect": "^2.0.1",
     "events": "^3.3.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
   }
 }

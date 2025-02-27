@@ -2,12 +2,115 @@
 #+SUBTITLE: Self-hosted cloud gaming platform
 
 * About
-Veil is a self-hosted cloud gaming platform.
+Veil is a self-hosted cloud gaming platform that enables you to stream games and applications from your server to a web browser. It uses WebRTC for low-latency streaming and a custom Wayland compositor to capture and transmit graphical output.
 
 * Architecture
 The project consists of several key components:
 
 - Client :: Next.js-based web client
-- Server :: Rust-based webRTC server
-- Compositor :: Rust-based wayland compositor
+- Server :: Rust-based WebRTC server
+- Compositor :: Rust-based Wayland compositor
 - Encoder :: Rust-based Vulkan Video encoder library
+- SDK :: TypeScript SDK for client-server communication
+- Proto :: Protocol definitions using Protocol Buffers
+
+* Setup
+
+** Development Environment
+The recommended way to set up the development environment is using Dev Containers. This ensures all dependencies are correctly installed and configured, regardless of your local environment.
+
+*** Using Dev Containers (Recommended)
+1. Install the prerequisites:
+   - Docker
+   - Dev Container CLI (https://github.com/devcontainers/cli)
+
+2. Clone the repository
+   #+BEGIN_SRC sh
+   git clone https://github.com/yourusername/veil.git
+   cd veil
+   #+END_SRC
+
+3. Start the dev container:
+   #+BEGIN_SRC sh
+   devcontainer up --workspace-folder .
+   #+END_SRC
+
+4. Enter the container:
+   #+BEGIN_SRC sh
+   devcontainer exec --workspace-folder . /bin/zsh
+   #+END_SRC
+
+   The container includes all necessary dependencies:
+   - Rust and Cargo tools (including watchexec)
+   - Node.js and pnpm
+   - Protocol Buffer compiler and plugins
+
+**** Note for GPU Acceleration
+If you have an NVIDIA GPU and wish to use it for hardware acceleration:
+- Ensure the NVIDIA Container Toolkit is installed on your host
+- The default configuration enables NVIDIA GPU passthrough when available
+
+This is optional and the project will work without GPU acceleration.
+
+*** Manual Setup
+If you prefer not to use Dev Containers, you'll need to install:
+- Node.js (v18+)
+- Rust (latest stable)
+- pnpm (v9+)
+- Buf CLI
+- Protocol Buffer compiler
+- Various Rust and Node.js dependencies
+
+** Installation
+Once your environment is set up:
+
+1. Install dependencies
+   #+BEGIN_SRC sh
+   pnpm install
+   #+END_SRC
+
+2. Generate Protocol Buffer code
+   #+BEGIN_SRC sh
+   cd modules/proto
+   buf generate
+   cd ../..
+   #+END_SRC
+
+3. Build the project
+   #+BEGIN_SRC sh
+   pnpm build
+   #+END_SRC
+
+* Development Workflow
+
+** Available Commands
+
+| Command       | Description                                           |
+|---------------+-------------------------------------------------------|
+| ~pnpm build~  | Build all modules                                     |
+| ~pnpm dev~    | Start development servers with auto-rebuild on changes |
+| ~pnpm clean~  | Clean all build artifacts                             |
+| ~pnpm lint~   | Run linters across all modules                        |
+
+** Development Mode
+Running ~pnpm dev~ will:
+- Start the client in development mode with Vite
+- Watch Rust files in server, compositor, and encoder for changes
+- Watch TypeScript files in the SDK
+- Automatically rebuild affected components when source files change
+
+** Building for Production
+To build for production, run:
+#+BEGIN_SRC sh
+pnpm build
+#+END_SRC
+
+This will create optimized builds of all components.
+
+* Project Structure
+- ~/modules/client~ - Web client built with React
+- ~/modules/server~ - WebRTC streaming server
+- ~/modules/compositor~ - Wayland compositor for capturing application output
+- ~/modules/encoder~ - Vulkan-based video encoding library
+- ~/modules/sdk~ - TypeScript SDK for client applications
+- ~/modules/proto~ - Protocol Buffer definitions for cross-component communication

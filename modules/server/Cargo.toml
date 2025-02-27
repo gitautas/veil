@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 webrtc = "0.12.0"
-proto = { path = "../proto" }
-compositor = { path = "../compositor" }
-encoder = { path = "../encoder" }
+proto = { package = "veil_proto", path = "../proto" }
+compositor = { package = "veil-compositor", path = "../compositor" }
+encoder = { package = "veil-encoder", path = "../encoder" }
 tonic = "0.12.3"
 tokio = "1.43.0"
 tokio-stream = "0.1.17"

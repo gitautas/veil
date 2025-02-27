@@ -13,7 +13,8 @@
     }
   },
   "scripts": {
-    "build": "buf generate && pnpm tsc -b",
+    "prebuild": "buf generate",
+    "build": "tsc -b",
     "lint": "buf lint",
     "clean": "rm -rf gen",
     "format": "buf format -w"
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@bufbuild/buf": "^1.29.0",
     "@bufbuild/protobuf": "^1.7.2",
-    "@bufbuild/protoc-gen-es": "^1.7.2"
+    "@bufbuild/protoc-gen-es": "^1.7.2",
+    "typescript": "^5.7.3"
   }
 }
