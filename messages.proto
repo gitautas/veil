@@ -1,0 +1,1164 @@
+syntax = "proto3";
+
+package messages;
+
+message Timestamp {
+  int64 seconds = 1; // Required.
+  int64 nanos = 2; // Required.
+}
+
+// ### Size, Extent
+//
+// A `Size` is a width, height tuple, mainly used to describe areas. An `Extent`
+// includes a starting position. The coordinate space depends on where these
+// structs are used, but should always be oriented with [0, 0] in the top left
+// position.
+message Size {
+  uint32 width = 1; // Required.
+  uint32 height = 2; // Required.
+}
+
+message Extent {
+  uint32 x = 1;
+  uint32 y = 2;
+  uint32 width = 3; // Required.
+  uint32 height = 4; // Required.
+}
+
+// ### Pixel Scale
+//
+// Represents a rational number, used in the context of HiDPI displays.
+// Fractions less than one are not allowed. For example, a pixel density of 1.5
+// would be represented as 3/2.
+message PixelScale {
+  uint32 numerator = 1; // Required.
+  uint32 denominator = 2; // Required.
+}
+
+// ### Virtual Output Params
+//
+// Represents the configuration of a virtual display, which is required to
+// launch a session.
+message VirtualDisplayParameters {
+  Size resolution = 1; // Required.
+  uint32 framerate_hz = 2; // Required.
+  PixelScale ui_scale = 3; // Required.
+}
+
+// ### Attachment type
+//
+// This refers to the manner of attachment.
+enum AttachmentType {
+  ATTACHMENT_TYPE_UNKNOWN = 0;
+  ATTACHMENT_TYPE_OPERATOR = 1;
+  ATTACHMENT_TYPE_VIEWER = 2;
+}
+
+// ### Video codec
+//
+// This refers to the codec used for a video stream.
+enum VideoCodec {
+  VIDEO_CODEC_UNKNOWN = 0;
+  VIDEO_CODEC_H264 = 1;
+  VIDEO_CODEC_H265 = 2;
+  VIDEO_CODEC_AV1 = 3;
+}
+
+// ### Video profile
+//
+// This refers to the profile used for a video stream. Profiles are fully
+// defined in the output section, below.
+enum VideoProfile {
+  VIDEO_PROFILE_UNKNOWN = 0;
+  VIDEO_PROFILE_HD = 1;
+  VIDEO_PROFILE_HDR10 = 2;
+}
+
+// ### Audio codec
+//
+// This refers to the codec used for an audio stream.
+enum AudioCodec {
+  AUDIO_CODEC_UNKNOWN = 0;
+  AUDIO_CODEC_OPUS = 1;
+}
+
+// ### Audio channels
+//
+// This defines a map of channels to speaker positions.
+message AudioChannels {
+  enum Channel {
+    CHANNEL_MONO = 0;
+    CHANNEL_FRONT_LEFT = 1;
+    CHANNEL_FRONT_RIGHT = 2;
+    CHANNEL_FRONT_CENTER = 3;
+    CHANNEL_REAR_CENTER = 4;
+    CHANNEL_REAR_LEFT = 5;
+    CHANNEL_REAR_RIGHT = 6;
+    CHANNEL_LFE = 7;
+    CHANNEL_FRONT_LEFT_OF_CENTER = 8;
+    CHANNEL_FRONT_RIGHT_OF_CENTER = 9;
+    CHANNEL_SIDE_LEFT = 10;
+    CHANNEL_SIDE_RIGHT = 11;
+  }
+
+  repeated Channel channels = 1;
+}
+
+// ### FEC Scheme
+//
+// Indicates a Forward Error Correction scheme used to protect packets,
+// and contains any data needed to locate a chunk within a packet.
+//
+// Definitions for the concepts can be found in RFCs 3452 and 5052.
+message FECMetadata {
+  enum FECScheme {
+    FEC_SCHEME_UNKNOWN = 0;
+
+    // Uses the RaptorQ scheme defined in RFC 6630.
+    FEC_SCHEME_RAPTORQ = 6;
+  }
+
+  // Required. Indicates the scheme used.
+  FECScheme fec_scheme = 1;
+
+  // Required. Contains the scheme-specific serialized Payload ID.
+  bytes fec_payload_id = 2;
+
+  // Required. Contains the scheme-specific serialized Object Transmission
+  // Information (OTI).
+  bytes fec_oti = 3;
+}
+
+// ### Gamepad
+//
+// A gamepad ID and metadata.
+message Gamepad {
+  enum GamepadLayout {
+    GAMEPAD_LAYOUT_UNKNOWN = 0;
+    GAMEPAD_LAYOUT_GENERIC_DUAL_STICK = 1;
+    GAMEPAD_LAYOUT_SONY_DUALSHOCK = 2;
+  }
+
+  uint64 id = 1; // Required.
+  GamepadLayout layout = 2; // Required.
+}
+
+// ### Application Image Format
+//
+// Distinguishes between different images associated with an application.
+enum ApplicationImageFormat {
+  APPLICATION_IMAGE_FORMAT_UNKNOWN = 0;
+  // A roughly 400x200 image for display in a list of applications.
+  APPLICATION_IMAGE_FORMAT_HEADER = 1;
+}
+
+// ## Errors and exceptions
+
+// ### 001 - Error
+//
+// This message may be sent by a server or client at any time on any stream.
+message Error {
+  enum ErrorCode {
+    ERROR_UNKNOWN = 0;
+    // Used to indicate an unrecoverable error on the server.
+    ERROR_SERVER = 10;
+    // Used to indicate a protocol violation.
+    ERROR_PROTOCOL = 20;
+    ERROR_PROTOCOL_UNEXPECTED_MESSAGE = 21;
+    ERROR_PROTOCOL_INCORRECT_STREAM = 22;
+    ERROR_PROTOCOL_UNKNOWN_MESSAGE_TYPE = 23;
+    ERROR_TIMEOUT = 24;
+    ERROR_APPLICATION_NOT_FOUND = 25;
+    ERROR_APPLICATION_NO_IMAGE = 26;
+    // Used to indicate that the server refuses to launch a session.
+    ERROR_SESSION_LAUNCH_FAILED = 30;
+    ERROR_SESSION_LAUNCH_REFUSED = 31;
+    // Used to indicate the session update couldn't be applied.
+    ERROR_SESSION_UPDATE_FAILED = 32;
+    // Used to indicate that the server refuses to allow the client to attach
+    // to the session.
+    ERROR_ATTACHMENT_REFUSED = 40;
+    ERROR_ATTACHMENT_PARAMS_NOT_SUPPORTED = 41;
+    // Used to indicate that the session has ended.
+    ERROR_SESSION_ENDED = 50;
+    ERROR_SESSION_ENDED_BY_CLIENT = 51;
+    ERROR_SESSION_ENDED_APPLICATION_EXIT = 52;
+    // Used for several session operations.
+    ERROR_SESSION_NOT_FOUND = 60;
+    ERROR_SESSION_INVALID_STATE = 61;
+    ERROR_SESSION_PARAMS_NOT_SUPPORTED = 62;
+    // Used to indicate a failed authentication attempt or ignored challenge.
+    ERROR_AUTHENTICATION_FAILED = 100;
+    // Used to indicate missing or insufficient credentials on another request.
+    ERROR_NOT_ALLOWED = 101;
+  }
+
+  ErrorCode err_code = 1; // Required.
+  string error_text = 3;
+}
+
+// ## Sessions and attachments
+//
+// A session represents a running application on the server. Creating a session
+// launches the application in the background. After the client *attaches* to
+// the session, then and only then must the server start sending video and audio
+// frames. These frames may either be on the attachment stream or sent
+// separately as QUIC datagrams.
+//
+// If supported by the server and application, sessions may have multiple
+// attachments, grouped into "operators" and "viewers".
+//
+// ### Render vs. streaming resolution
+//
+// Sessions are defined by a render resolution (with framerate and scale,
+// collectively referred to as the virtual display parameters), while individual
+// attachments are defined by a streaming resolution. The former results in the
+// resolution of the output texture the application renders to, while the latter
+// refers to the dimensions of the compressed video stream.
+//
+// Servers must support streaming at the exact render resolution, but they may
+// also optionally support different render and streaming resolutions. The most
+// common use case for this would be to render at a "super resolution", ie an
+// integer multiple of the streaming resolution, to improve quality in
+// environments with limited bandwidth, or to support "preview" attachments
+// which stream at a very low resolution.
+//
+// Servers must either obey the requested render resolution or reject the
+// corresponding `013 - Launch Session` or `015 - Update Session` message with
+// an error. Similarly, servers must either obey the requested streaming
+// resolution or reject the corresponding `030 - Attach` message.
+//
+// Servers must always emit encoded frames at the virtual display framerate.
+
+// ### Resolution changes
+//
+// Servers may choose to update the render resolution of a session at any time,
+// for example at the request of a client, or in the case that an app requests a
+// new resolution. Servers must inform existing attachments of the new
+// resolution using the `033 - Session Parameters Changed` message.
+// Additionally, if the streaming resolution of existing attachments is no
+// longer compatible with the new resolution, the server may indicate that in
+// the message.
+//
+// ### HiDPI passthrough
+//
+// Clients on screens with a pixel density higher than one may inform the server
+// at session creation time, or request a change to an existing session with
+// `015 - Update Session`. In any case, the render resolution specified is still
+// the final resolution, not the "logical" resolution. For example, a client
+// requesting a `render_resolution` of 2560x1600 with a UI scale of 2 would
+// still result in a render resolution of 2560x1600; the UI scale should be
+// passed as a hint to the application in whatever platform-specific way makes
+// sense. This is important because many applications are able to automatically
+// scale UI elements or make other user-experience improvements subject to UI
+// scale.
+//
+// ### Quality preset
+//
+// Clients can use the `quality_preset` field of the `030 - Attach` message to
+// tune the quality of the stream, which is inversely related to the bandwidth
+// usage. The value ranges from 1 to 10, with 1 indicating that the client
+// wishes the server to optimize for the the lowest possible bandwidth usage,
+// and 10 indicating that the client wishes the server to optimize for the
+// highest possible quality. How these values are interpreted is determined by
+// the server.
+//
+// ### Concurrent attachments
+//
+// Servers may support multiple concurrent attachments from different clients,
+// for example to support secondary "viewer" attachments. If the parameters of
+// the attachments differ, the server may choose to encode multiple streams at
+// different resolutions, or it may simply choose one (the operator's attachment
+// parameters should take precedence) and use that for all attachments.
+
+// TODO: attachments should probably be distinct for audio and video, so that
+// reattaching doesn't cause audio to skip
+
+// ### 011 - List Applications
+//
+// This message, which must originate from the client on a new stream, requests
+// a list of available applications to launch as sessions. The server must
+// either respond with an `012 - Application List` message or an `001 - Error`
+// message on the same stream.
+message ListApplications {}
+
+// ### 012 - Application List
+//
+// This message, which must originate from the server on the same stream as a
+// corresponding `011 - List Applications` message, indicates the list of
+// available applications to launch as sessions.
+message ApplicationList {
+  message Application {
+    string id = 1; // Required. Must be unique.
+    string description = 2;
+
+    // A list of path components, used to group applications for display.
+    repeated string folder = 3;
+
+    // If set, the image can be fetched with a `021 - Fetch Application Image`
+    // message.
+    repeated ApplicationImageFormat images_available = 4;
+  }
+
+  repeated Application list = 1;
+}
+
+// ### 013 - Launch Session
+//
+// This message, which must originate from the client on a new stream, requests
+// that the server launch the application specified by `id`. The id should match
+// the id of an application returned by `012 - Application List`.
+//
+// The server must either launch a session, replying with `014 - Session
+// Launched` once the session has started and is available to attach, or send an
+// `001 - Error` message on the same stream indicating why it refuses to do so.
+message LaunchSession {
+  // Required; must match the id of an application returned in "12 - Application
+  // List".
+  string application_id = 1;
+
+  VirtualDisplayParameters display_params = 10; // Required.
+
+  // Any gamepads that should be available at the start of the session. This is
+  // sometimes important for applications that don't correctly support
+  // hotplugged devices.
+  //
+  // These gamepads should be considered permanently connected, and
+  // GamepadUnavailable events should be ignored for them.
+  repeated Gamepad permanent_gamepads = 20;
+}
+
+// ### 014 - Session Launched
+//
+// This message, which must originate from the server on the same stream as the
+// corresponding `013 - Launch Session` message, indicates that the session has
+// successfully launched and may be attached.
+message SessionLaunched {
+  uint64 id = 1; // Required.
+
+  // Required. Must include at least the `render_resolution` specified in the
+  // corresponding `013 - Launch Session` message.
+  repeated Size supported_streaming_resolutions = 10;
+
+  // TODO supported_sample_rate?
+}
+
+// ### 015 - Update Session
+//
+// This message, which must originate from the client on a new stream, requests
+// that the server update the parameters of a running session. An ommitted value
+// indicates that the existing setting should remain. The server must respond
+// with either `016 - Session Updated` or `001 - Error` on the same stream.
+message UpdateSession {
+  uint64 session_id = 1; // Required.
+
+  VirtualDisplayParameters display_params = 10;
+}
+
+// ### 016 - Session Updated
+//
+// This message, which must originate from the server on the same stream as the
+// corresponding `015 - Update Session` message, indicates that the requested
+// update was successfully applied.
+message SessionUpdated {}
+
+// ### 017 - List Sessions
+//
+// This message, which must originate from the client on a new stream, requests
+// a list of attachable sessions. The server must respond with either `018 -
+// Session List` or an `001 - Error` on the same stream.
+message ListSessions {}
+
+// ### 018 - Session List
+//
+// This message, which must originate from the server on the same stream as the
+// corresponding `017 - List Sessions` request, indicates a list of attachable
+// sessions to the client.
+message SessionList {
+  message Session {
+    uint64 session_id = 1; // Required.
+    string application_id = 2; // Required.
+    Timestamp session_start = 3; // Required.
+
+    VirtualDisplayParameters display_params = 10; // Required.
+
+    // Required. Must include at least the `render_resolution` of the session.
+    repeated Size supported_streaming_resolutions = 13;
+
+    // Required if any were set in the original `013 - Launch Session` event.
+    repeated Gamepad permanent_gamepads = 20;
+
+    // TODO attachable type?
+    // TODO existing attachments?
+  }
+
+  repeated Session list = 1;
+}
+
+// ### 019 - End Session
+//
+// This message, which must originate from the client on a new stream, requests
+// that the server end the named session and detach all clients.
+//
+// If a server chooses to comply, it should send `001 - Error` messages to all
+// other attached clients (with ERR_SESSION_ENDED_BY_CLIENT), and an `020 -
+// Session Ended` message on this stream. Otherwise, it should send an `001 -
+// Error` message on this stream.
+message EndSession {
+  uint64 session_id = 1; // Required.
+}
+
+// ### 020 - Session Ended.
+//
+// This message, which must originate from the server on the same stream as the
+// corresponding `019 - End Session` message, confirms that the session has been
+// ended.
+message SessionEnded {}
+
+// ### 021 - Fetch Application Image
+//
+// This message, which must originate from the client on a new stream, requests
+// image metadata for an application. The Server must respond with either an
+// `022 - Application Image` message or an `001 - Error` message on the same
+// stream.
+message FetchApplicationImage {
+  string application_id = 1; // Required.
+  ApplicationImageFormat format = 2; // Required.
+}
+
+// ### 022 - Application Image
+//
+// This message, which must originate from the server on the same stream as the
+// corresponding `021 - Fetch Application Image` message, sends the requested
+// image data to the client.
+message ApplicationImage {
+  // Required. Must be a complete PNG file and less than 1048576 bytes. Either
+  // restriction may be lifted or in the future.
+  bytes image_data = 1;
+}
+
+// ### 030 - Attach
+//
+// This message, which must originate from the client on a new stream, requests
+// that the server attach the client to the named session. Upon receipt of this
+// request, the server must either refuse the attachment with an `001 - Error`
+// message, or send an `031 - Attached` message on the same stream and start
+// sending video and audio packets to the client.
+//
+// Ommitted fields indicate that the server should choose the parameters.
+//
+// The server may choose to reject the attachment for any reason, including but
+// not limited to:
+//
+//  - The output parameters, such as resolution or codec, are invalid or not
+//    supported.
+//  - The server already has a client attached to that session, and wishes to
+//    limit the number of attachments (or doesn't support multiple attachments).
+//  - The authentication so far provided doesn't grant the client access to that
+//    session with that attachment type.
+message Attach {
+  uint64 session_id = 1; // Required.
+  AttachmentType attachment_type = 2; // Required.
+  string client_name = 3;
+
+  VideoCodec video_codec = 10;
+  Size streaming_resolution = 11;
+  VideoProfile video_profile = 12;
+  uint32 quality_preset = 13; // Must be in the range 1-10.
+
+  AudioCodec audio_codec = 15;
+  AudioChannels channels = 16;
+  uint32 sample_rate_hz = 17;
+}
+
+// ### 031 - Attached
+//
+// This message, which must originate from the server on the same stream as the
+// original `030 - Attach` message, indicates that the
+// server accepts the client and will begin streaming with the client's
+// requested parameters. The parameters must match the parameters sent in the
+// original `030 - Attach` message, or represent the server-chosen default if
+// they were ommitted.
+message Attached {
+  uint64 session_id = 1; // Required.
+  uint64 attachment_id = 2; // Required.
+
+  VideoCodec video_codec = 10; // Required.
+  Size streaming_resolution = 11; // Required.
+  VideoProfile video_profile = 12; // Required.
+  uint32 quality_preset = 13; // Required.
+
+  AudioCodec audio_codec = 15; // Required.
+  AudioChannels channels = 16; // Required.
+  uint32 sample_rate_hz = 17; // Required.
+}
+
+// ### 032 - Keep Alive
+//
+// This message, which must originate from the client on the stream where the
+// original `030 - Attach` message was sent, indicates that the client
+// is still attached. The server may take the absence of a regular `Keep Alive`
+// message to indicate that the client has gone away should be considered
+// detached.
+message KeepAlive {}
+
+// ### 033 - Session Parameters Changed
+//
+// This message, which must originate from the server on the same stream as the
+// original `030 - Attach` message, indicates that the parameters of the
+// attached session have changed. If `reattach_required` is set to true, the
+// client should consider the attachment to be ended and reattach with new
+// parameters.
+message SessionParametersChanged {
+  bool reattach_required = 1;
+
+  VirtualDisplayParameters display_params = 10;
+
+  // Required. Must include at least the `render_resolution` of the session.
+  repeated Size supported_streaming_resolutions = 13;
+}
+
+// ### 035 - Detach
+//
+// This message, which must originate from the client on the stream where the
+// original `030 - Attach` message was sent, indicates that the client
+// wishes to detach and end streaming. Upon receipt of this message, the server
+// must stop streaming frames or accepting input on the attachment stream.
+message Detach {}
+
+// ## Output
+//
+// This section pertains to the application output, streamed from server to
+// client.
+//
+// Output packets, whether audio or video, are always part of a session, an
+// attachment, and a stream. A session may have multiple attachments, and an
+// attachment may periodically restart its audio or video stream, resulting in a
+// new stream. As packets may be too large to send in one datagram, they may be
+// chunked by the server. Therefore, a fourth identifier, a packet sequence
+// number, is used to group chunks in a sequence of potentially unordered
+// datagrams.
+//
+// All four identifiers (session, attachment, stream, and packet) should be
+// considered opaque to the client. However, the stream and packet sequence
+// numbers should only increase monotonically as new packets and new streams are
+// created. See the section below for more detail.
+//
+// The contents of each packet are opaque, and depend on the codec being used.
+//
+// Servers should only send packets for one video and one audio stream for one
+// attachment at a time.
+//
+// ### Datagram support
+//
+// If both server and client support the QUIC Datagram extension (RFC 9221),
+// then output packets should be sent as datagrams. If either client or server
+// do not support datagrams, the chunks must be sent on the same stream as the
+// original `030 - Attach` message was sent.
+//
+// Since datagrams are not associated with any particular QUIC stream, the
+// `session_id` and `attachment_id` fields of the below messages may be
+// necessary to disambiguate received chunks. However, to reduce overhead, a
+// server may omit both fields if sending chunks on the original attachment
+// stream, rather than as datagrams.
+//
+// ### Multiple attachments
+//
+// To determine video stream parameters in the case of multiple concurrent
+// attachments to the same session, operator streams should take precedence.
+//
+// ### Video compression
+//
+// The following apply to all supported video codecs:
+//
+//  - The server must tag the video bitstream with resolution, framerate, and
+//    YCbCr color space/range using whatever mechanism is supported by the codec
+//    (for example, PPS/VUI frames in H.264). Clients should use this
+//    information to verify that the parameters match the requested attachment
+//    parameters.
+//  - The server must use YCbCr 4:2:0 chroma subsampling for the compressed
+//    stream (this is sometimes called YUV420P, and is the default for most
+//    implementations of H264, H265, and AV1).
+//  - For VIDEO_PROFILE_HD, a bit depth of 8, along with the Rec.709 color space
+//    and limited range must be used. For H.264, H.265, and AV1, this
+//    corresponds to `colour_primaries`, `transfer_characteristics`, and
+//    `matrix_coeffs` all equal to 1, and the `video_full_range_flag` set to 0
+//    (named `color_range` for AV1).
+//  - For VIDEO_PROFILE_HDR10, a bit depth of 10, along with the Rec. 2100 color
+//    space and limited range must be used. For H.264, H.265, and AV1, this
+//    corresponds to `colour_primaries` and `matrix_coeffs` equal to 9,
+//    `transfer_characteristics` equal to 16, and the `video_full_range_flag`
+//    set to 0 (named `color_range` for AV1). The server should additionally use
+//    SEI headers (or metadata OBUs for AV1) to communicate HDR metadata such as
+//    mastering display color volume (MDCV) and content light level (CLL)
+//    information.
+//  - The server may reuse an existing compression context for a new attachment,
+//    but in this case the stream must be resumable by the client within a
+//    reasonable time frame. For H.265, for example, this means sending headers
+//    with every keyframe, and a keyframe immediately after the attachment
+//    begins.
+//
+// ### Audio compression
+//
+// The following apply to all supported audio codecs:
+//
+// - The server must use a 10ms or smaller packet size.
+// - Audio streams must use a sample rate of between 16kHz and 48kHz.
+
+// ### 051 - Video Chunk
+//
+// This message, which must originate from the server as a datagram or on the
+// same stream as the original `030 - Attach` message, contains a part of a
+// video packet.
+//
+// Much of the metadata associated with the chunk applies to all chunks of a
+// given packet, but must be repeated on each chunk such that a client
+// receiving the first (potentially out-of-order) chunk has sufficient
+// information to deal with it.
+message VideoChunk {
+  // Required unless sent on the same stream as the original attach message.
+  uint64 session_id = 1;
+  uint64 attachment_id = 2;
+
+  // Required. Represents the ordering of packets in a stream and the
+  // association of packets to a video stream.
+  uint64 stream_seq = 10;
+  uint64 seq = 11;
+
+  // Required unless an FEC scheme is used. Taken together, these represent the
+  // placement of a chunk within a packet.
+  //
+  // If `fec_metadata` is set, both these fields must be unset.
+  uint32 chunk = 12;
+  uint32 num_chunks = 13;
+
+  // If the encoder is using hierarchical coding (sometimes called SVC), this
+  // field indicates the layer that the packet belongs to.
+  uint32 hierarchical_layer = 16;
+
+  // Contains FEC metadata to locate the chunk within the overall packet.
+  FECMetadata fec_metadata = 15;
+
+  // Required. A millisecond timestamp with an arbitrary epoch, used to
+  // synchronize audio and video streams.
+  uint64 timestamp = 20;
+
+  // Required. The chunk of the video packet, or, if an FEC scheme is used, a
+  // single symbol from the stream of symbols.
+  bytes data = 99;
+}
+
+// ### 052 - Request Video Refresh
+//
+// This message, which must be sent by the client on the same stream as the
+// original `030 - Attach` message, requests that the server perform an IDR
+// refresh in the current video stream as soon as possible. The server should
+// send stream headers and a full keyframe as soon as possible, unless the
+// indicated stream is ended or restarted.
+message RequestVideoRefresh {
+  uint64 stream_seq = 1;
+}
+
+// ### 056 - Audio Chunk
+//
+// This message, which must originate from the server as a datagram or on the
+// same stream as the original `030 - Attach` message, contains a part of an
+// audio packet.
+message AudioChunk {
+  // Required unless sent on the same stream as the original attach message.
+  uint64 session_id = 1;
+  uint64 attachment_id = 2;
+
+  // Required. Represents the ordering of packets in a stream and the
+  // association of packets to an audio stream.
+  uint64 stream_seq = 10;
+  uint64 seq = 11;
+
+  // Required unless an FEC scheme is used. Taken together, these represent the
+  // placement of a chunk within a packet.
+  //
+  // If `fec_metadata` is set, both these fields must be unset.
+  uint32 chunk = 12;
+  uint32 num_chunks = 13;
+
+  // Contains FEC metadata to locate the chunk within the overall packet.
+  FECMetadata fec_metadata = 15;
+
+  // Required. A millisecond timestamp with an arbitrary epoch, used to
+  // synchronize audio and video streams.
+  uint64 timestamp = 20;
+
+  // Required. The chunk of the audio packet, or, if an FEC scheme is used, a
+  // single symbol from the stream of symbols.
+  bytes data = 99;
+}
+
+// ## Input
+//
+// Input messages are used by the client to indicate user interaction, whether
+// it be via a keyboard, mouse, gamepad, or some other input. Input is always
+// scoped to an attachment and sent on the attachment stream.
+//
+// ### Relative vs absolute cursor motion
+//
+// Clients are responsible for sending both absolute and relative pointer motion
+// events. The two event types are unrelated and do not compound; the former
+// represents the visible location of the cursor, while the latter represents
+// raw motion vectors from the device.
+//
+// Absolute motion is indicated by `063 - Pointer Motion` messages, while
+// relative motion is indicated by `069 - Relative Pointer Motion` messages.
+//
+// Absolute motion events are always necessary. Clients may choose to send
+// relative motion events only when the cursor is locked by a `067 - Lock
+// Pointer` event, until the cursor is released by a corresponding `068 -
+// Release Pointer` event.
+
+// ### 060 - Keyboard Input
+//
+// This message, which must originate from the client on the same stream as the
+// original `030 - Attach` message, represents keyboard input from the user.
+message KeyboardInput {
+  enum KeyState {
+    KEY_STATE_UNKNOWN = 0;
+    KEY_STATE_PRESSED = 1;
+    KEY_STATE_REPEAT = 2;
+    KEY_STATE_RELEASED = 3;
+  }
+
+  // These map to the keycodes from the W3C "UI Events" specification. It
+  // represents the key location, irrespective of keyboard layout or character
+  // output.
+  //
+  // Media and remote control keys are omitted.
+  //
+  // https://w3c.github.io/uievents-code/#code-value-tables
+  enum Key {
+    KEY_UNKNOWN = 0;
+    KEY_BACKQUOTE = 1;
+    KEY_BACKSLASH = 2;
+    KEY_BRACKET_LEFT = 3;
+    KEY_BRACKET_RIGHT = 4;
+    KEY_COMMA = 5;
+    KEY_DIGIT_0 = 10;
+    KEY_DIGIT_1 = 11;
+    KEY_DIGIT_2 = 12;
+    KEY_DIGIT_3 = 13;
+    KEY_DIGIT_4 = 14;
+    KEY_DIGIT_5 = 15;
+    KEY_DIGIT_6 = 16;
+    KEY_DIGIT_7 = 17;
+    KEY_DIGIT_8 = 18;
+    KEY_DIGIT_9 = 19;
+    KEY_EQUAL = 20;
+    KEY_INTL_BACKSLASH = 21;
+    KEY_INTL_RO = 22;
+    KEY_INTL_YEN = 23;
+    KEY_A = 30;
+    KEY_B = 31;
+    KEY_C = 32;
+    KEY_D = 33;
+    KEY_E = 34;
+    KEY_F = 35;
+    KEY_G = 36;
+    KEY_H = 37;
+    KEY_I = 38;
+    KEY_J = 39;
+    KEY_K = 40;
+    KEY_L = 41;
+    KEY_M = 42;
+    KEY_N = 43;
+    KEY_O = 44;
+    KEY_P = 45;
+    KEY_Q = 46;
+    KEY_R = 47;
+    KEY_S = 48;
+    KEY_T = 49;
+    KEY_U = 50;
+    KEY_V = 51;
+    KEY_W = 52;
+    KEY_X = 53;
+    KEY_Y = 54;
+    KEY_Z = 55;
+    KEY_MINUS = 60;
+    KEY_PERIOD = 61;
+    KEY_QUOTE = 62;
+    KEY_SEMICOLON = 63;
+    KEY_SLASH = 64;
+    KEY_ALT_LEFT = 65;
+    KEY_ALT_RIGHT = 66;
+    KEY_BACKSPACE = 67;
+    KEY_CAPS_LOCK = 68;
+    KEY_CONTEXT_MENU = 69;
+    KEY_CONTROL_LEFT = 70;
+    KEY_CONTROL_RIGHT = 71;
+    KEY_ENTER = 72;
+    KEY_META_LEFT = 73;
+    KEY_META_RIGHT = 74;
+    KEY_SHIFT_LEFT = 75;
+    KEY_SHIFT_RIGHT = 76;
+    KEY_SPACE = 77;
+    KEY_TAB = 78;
+    KEY_CONVERT = 79;
+    KEY_KANA_MODE = 80;
+    KEY_LANG_1 = 81;
+    KEY_LANG_2 = 82;
+    KEY_LANG_3 = 83;
+    KEY_LANG_4 = 84;
+    KEY_LANG_5 = 85;
+    KEY_NON_CONVERT = 86;
+    KEY_DELETE = 87;
+    KEY_END = 88;
+    KEY_HELP = 89;
+    KEY_HOME = 90;
+    KEY_INSERT = 91;
+    KEY_PAGE_DOWN = 92;
+    KEY_PAGE_UP = 93;
+    KEY_ARROW_DOWN = 94;
+    KEY_ARROW_LEFT = 95;
+    KEY_ARROW_RIGHT = 96;
+    KEY_ARROW_UP = 97;
+    KEY_NUM_LOCK = 100;
+    KEY_NUMPAD_0 = 101;
+    KEY_NUMPAD_1 = 102;
+    KEY_NUMPAD_2 = 103;
+    KEY_NUMPAD_3 = 104;
+    KEY_NUMPAD_4 = 105;
+    KEY_NUMPAD_5 = 106;
+    KEY_NUMPAD_6 = 107;
+    KEY_NUMPAD_7 = 108;
+    KEY_NUMPAD_8 = 109;
+    KEY_NUMPAD_9 = 110;
+    KEY_NUMPAD_ADD = 111;
+    KEY_NUMPAD_BACKSPACE = 112;
+    KEY_NUMPAD_CLEAR = 113;
+    KEY_NUMPAD_CLEAR_ENTRY = 114;
+    KEY_NUMPAD_COMMA = 115;
+    KEY_NUMPAD_DECIMAL = 116;
+    KEY_NUMPAD_DIVIDE = 117;
+    KEY_NUMPAD_ENTER = 118;
+    KEY_NUMPAD_EQUAL = 119;
+    KEY_NUMPAD_HASH = 120;
+    KEY_NUMPAD_MEMORY_ADD = 121;
+    KEY_NUMPAD_MEMORY_CLEAR = 122;
+    KEY_NUMPAD_MEMORY_RECALL = 123;
+    KEY_NUMPAD_MEMORY_STORE = 124;
+    KEY_NUMPAD_MEMORY_SUBTRACT = 125;
+    KEY_NUMPAD_MULTIPLY = 126;
+    KEY_NUMPAD_PAREN_LEFT = 127;
+    KEY_NUMPAD_PAREN_RIGHT = 128;
+    KEY_NUMPAD_SUBTRACT = 129;
+    KEY_ESCAPE = 200;
+    KEY_F1 = 201;
+    KEY_F2 = 202;
+    KEY_F3 = 203;
+    KEY_F4 = 204;
+    KEY_F5 = 205;
+    KEY_F6 = 206;
+    KEY_F7 = 207;
+    KEY_F8 = 208;
+    KEY_F9 = 209;
+    KEY_F10 = 210;
+    KEY_F11 = 211;
+    KEY_F12 = 212;
+    KEY_FN = 213;
+    KEY_FN_LOCK = 214;
+    KEY_PRINT_SCREEN = 215;
+    KEY_SCROLL_LOCK = 216;
+    KEY_PAUSE = 217;
+    KEY_HIRAGANA = 218;
+    KEY_KATAKANA = 219;
+  }
+
+  Key key = 1; // Required. The physical key that was pressed.
+  KeyState state = 2; // Required.
+
+  // A unicode code point for text input, required unless the keypress would
+  // not result in a character.
+  //
+  // This may be completely unrelated to the physical key, depending on the
+  // software keyboard layout on the client side.
+  uint32 char = 3;
+}
+
+// ### 061 - Pointer Entered
+//
+// This message, which must be sent by the client on the same stream as the
+// original `030 - Attach` message, indicates that the Pointer has entered
+// the window area.
+message PointerEntered {}
+
+// ### 062 - Pointer Left
+//
+// This message, which must be sent by the client on the same stream as the
+// original `030 - Attach` message, indicates that the Pointer has left the
+// window area.
+message PointerLeft {}
+
+// ### 063 - Pointer Motion
+//
+// This message, which must be sent by the client on the same stream as the
+// original `030 - Attach` message, indicates that the Pointer has moved to a
+// new position.
+//
+// The coordinates should be in the space defined by the `streaming_resolution`
+// field of the `030 - Attach` message.
+message PointerMotion {
+  double x = 1; // Required.
+  double y = 2; // Required.
+}
+
+// ### 064 - Pointer Input
+//
+// This message, which must be sent by the client on the same stream as the
+// original `030 - Attach` message, indicates a Pointer button event.
+message PointerInput {
+  enum ButtonState {
+    BUTTON_STATE_UNKNOWN = 0;
+    BUTTON_STATE_PRESSED = 1;
+    BUTTON_STATE_RELEASED = 2;
+  }
+
+  enum Button {
+    BUTTON_UNKNOWN = 0;
+    BUTTON_LEFT = 1;
+    BUTTON_MIDDLE = 2;
+    BUTTON_RIGHT = 3;
+    BUTTON_BACK = 4;
+    BUTTON_FORWARD = 5;
+  }
+
+  Button button = 1; // Required.
+  ButtonState state = 2; // Required.
+  double x = 3; // Required.
+  double y = 4; // Required.
+}
+
+// ### 065 - Pointer Scroll
+//
+// This message, which must be sent by the client on the same stream as the
+// original `030 - Attach` message, indicates that the user has scrolled,
+// either using the mouse wheel, a touchpad, or some other mechanism.
+//
+// The scroll_type determines how the values of x and y are interpreted.
+// `CONTINUOUS` indicates a vector in pixels, in the coordinate space defined
+// by the `resolution` parameter of the `VirtualDisplayParams` set on the
+// session. Discrete indicates individual steps, for example on a clicky
+// scroll wheel.
+//
+// In both cases, positive values indicate that the scrolled content should
+// move right and down, revealing more content to the top and left.
+message PointerScroll {
+  enum ScrollType {
+    SCROLL_TYPE_UNKNOWN = 0;
+    SCROLL_TYPE_CONTINUOUS = 1;
+    SCROLL_TYPE_DISCRETE = 2;
+  }
+
+  double x = 1;
+  double y = 2;
+  ScrollType scroll_type = 3;
+}
+
+// ### 066 - Update Cursor
+//
+// This message, which must be sent by the server on the same stream as the
+// original `030 - Attach` message, indicates that the cursor image has changed
+// and the client should use the new one when the cursor is over the window.
+message UpdateCursor {
+  // Corresponds to the W3C UI specification.
+  //
+  // https://www.w3.org/TR/css-ui-3/#cursor
+  enum CursorIcon {
+    CURSOR_ICON_UNKNOWN = 0;
+    CURSOR_ICON_AUTO = 1;
+    CURSOR_ICON_DEFAULT = 2;
+    CURSOR_ICON_NONE = 3;
+
+    CURSOR_ICON_CONTEXT_MENU = 4;
+    CURSOR_ICON_HELP = 5;
+    CURSOR_ICON_POINTER = 6;
+    CURSOR_ICON_PROGRESS = 7;
+    CURSOR_ICON_WAIT = 8;
+
+    CURSOR_ICON_CELL = 9;
+    CURSOR_ICON_CROSSHAIR = 10;
+    CURSOR_ICON_TEXT = 11;
+    CURSOR_ICON_VERTICAL_TEXT = 12;
+
+    CURSOR_ICON_ALIAS = 13;
+    CURSOR_ICON_COPY = 14;
+    CURSOR_ICON_MOVE = 15;
+    CURSOR_ICON_NO_DROP = 16;
+    CURSOR_ICON_NOT_ALLOWED = 17;
+    CURSOR_ICON_GRAB = 18;
+    CURSOR_ICON_GRABBING = 19;
+
+    CURSOR_ICON_E_RESIZE = 20;
+    CURSOR_ICON_N_RESIZE = 21;
+    CURSOR_ICON_NE_RESIZE = 22;
+    CURSOR_ICON_NW_RESIZE = 23;
+    CURSOR_ICON_S_RESIZE = 24;
+    CURSOR_ICON_SE_RESIZE = 25;
+    CURSOR_ICON_SW_RESIZE = 26;
+    CURSOR_ICON_W_RESIZE = 27;
+    CURSOR_ICON_EW_RESIZE = 28;
+    CURSOR_ICON_NS_RESIZE = 29;
+    CURSOR_ICON_NESW_RESIZE = 30;
+    CURSOR_ICON_NWSE_RESIZE = 31;
+    CURSOR_ICON_COL_RESIZE = 32;
+    CURSOR_ICON_ROW_RESIZE = 33;
+    CURSOR_ICON_ALL_SCROLL = 34;
+
+    CURSOR_ICON_ZOOM_IN = 35;
+    CURSOR_ICON_ZOOM_OUT = 36;
+  }
+
+  // Required.
+  CursorIcon icon = 1;
+
+  // The cursor image, encoded as a PNG file. If set, the client should use
+  // this and use the icon field solely as a fallback.
+  bytes image = 2;
+
+  // Relates to the image, if set.
+  uint32 hotspot_x = 3;
+  uint32 hotspot_y = 4;
+}
+
+// ### 067 - Lock Pointer
+//
+// This message, which must originate from the server on the same stream as the
+// original `030 - Attach` message, indicates that the pointer should be locked
+// to the given location.
+//
+// The coordinates should be in the space defined by the `streaming_resolution`
+// field of the `030 - Attach` message.
+message LockPointer {
+  double x = 1;
+  double y = 2;
+}
+
+// ### 068 - Release Pointer
+//
+// This message, which must originate from the server on the same stream as the
+// original `030 - Attach` message, indicates the pointer should be no longer
+// be locked.
+message ReleasePointer {}
+
+// ### 069 - Relative Pointer Motion
+//
+// This message, which must originate from the client on the same stream as the
+// original `030 - Attach` message, indicates that the Pointer has moved.
+//
+// The vector should be in the space defined by the `streaming_resolution`
+// field of the `030 - Attach` message.
+message RelativePointerMotion {
+  double x = 1; // Required.
+  double y = 2; // Required.
+}
+
+// ### 070 - Gamepad Available
+//
+// This message, which must originate from the client on the same stream as the
+// original `030 - Attach` message, indicates that a gamepad is available
+// on the client.
+message GamepadAvailable {
+  // Required. The ID should remain stable if the gamepad is unplugged and
+  // replugged.
+  Gamepad gamepad = 1;
+}
+
+// ### 071 - Gamepad Unavailable
+//
+// This message, which must originate from the client on the same stream as the
+// original `030 - Attach` message, indicates that a gamepad is no longer
+// available, for example because it was unplugged.
+message GamepadUnavailable {
+  uint64 id = 1; // Required.
+}
+
+// ### 072 - Gamepad Motion
+//
+// This message, which must originate from the client on the same stream as the
+// original `030 - Attach` message, indicates movement on a joystick or trigger.
+message GamepadMotion {
+  enum GamepadAxis {
+    GAMEPAD_AXIS_UNKNOWN = 0;
+
+    // The left and right joysticks on a standard two-stick gamepad.
+    GAMEPAD_AXIS_LEFT_X = 1;
+    GAMEPAD_AXIS_LEFT_Y = 2;
+    GAMEPAD_AXIS_RIGHT_X = 3;
+    GAMEPAD_AXIS_RIGHT_Y = 4;
+
+    // The soft triggers on a standard two-stick gamepad, usually called
+    // L2 and R2.
+    GAMEPAD_AXIS_LEFT_TRIGGER = 5;
+    GAMEPAD_AXIS_RIGHT_TRIGGER = 6;
+  }
+
+  uint64 gamepad_id = 1; // Required.
+  GamepadAxis axis = 2; // Required.
+
+  // Required, with a value from -1.0 (towards the top of the gamepad) to 1.0
+  // (towards the bottom of the gamepad). Zero always represents the resting
+  // position, and triggers will therefore usually range from 0.0 to 1.0
+  // (fully pressed).
+  double value = 3;
+}
+
+// ### 073 - Gamepad Input
+//
+// This message, which must originate from the client on the same stream as the
+// original `030 - Attach` message, indicates input from a gamepad button.
+message GamepadInput {
+  enum GamepadButtonState {
+    GAMEPAD_BUTTON_STATE_UNKNOWN = 0;
+    GAMEPAD_BUTTON_STATE_PRESSED = 1;
+    GAMEPAD_BUTTON_STATE_RELEASED = 2;
+  }
+
+  enum GamepadButton {
+    GAMEPAD_BUTTON_UNKNOWN = 0;
+    GAMEPAD_BUTTON_DPAD_LEFT = 1;
+    GAMEPAD_BUTTON_DPAD_RIGHT = 2;
+    GAMEPAD_BUTTON_DPAD_UP = 3;
+    GAMEPAD_BUTTON_DPAD_DOWN = 4;
+
+    // X on a DualShock/DualSense, A on an Xbox gamepad, and B on a Nintendo
+    // gamepad.
+    GAMEPAD_BUTTON_SOUTH = 5;
+    GAMEPAD_BUTTON_EAST = 6;
+    GAMEPAD_BUTTON_NORTH = 7;
+    GAMEPAD_BUTTON_WEST = 8;
+
+    // The right and left shoulder buttons, usually called L1 and R1.
+    GAMEPAD_BUTTON_SHOULDER_LEFT = 9;
+    GAMEPAD_BUTTON_SHOULDER_RIGHT = 10;
+
+    // The left and right joystick buttons, usually called L3 and R3.
+    GAMEPAD_BUTTON_JOYSTICK_LEFT = 11;
+    GAMEPAD_BUTTON_JOYSTICK_RIGHT = 12;
+
+    // Assorted buttons on the face of the gamepad.
+    GAMEPAD_BUTTON_START = 13;
+    GAMEPAD_BUTTON_SELECT = 14;
+    GAMEPAD_BUTTON_LOGO = 15;
+    GAMEPAD_BUTTON_SHARE = 16;
+
+    // Occasionally, gamepads will have another two buttons next to the NESW
+    // buttons.
+    GAMEPAD_BUTTON_C = 17;
+    GAMEPAD_BUTTON_Z = 18;
+
+    // Very rarely, gamepads will have another set of buttons rather than
+    // triggers.
+    GAMEPAD_BUTTON_TRIGGER_LEFT = 19;
+    GAMEPAD_BUTTON_TRIGGER_RIGHT = 20;
+  }
+
+  uint64 gamepad_id = 1; // Required.
+  GamepadButton button = 2; // Required.
+  GamepadButtonState state = 3; // Required
+}

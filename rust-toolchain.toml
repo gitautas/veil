@@ -1,0 +1,6 @@
+# Pinned so every checkout builds with the same compiler. Veil uses no
+# nightly features; bump this deliberately when updating Rust.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]

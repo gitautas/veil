@@ -1,0 +1,66 @@
+[package]
+name = "veil"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+
+[package.metadata.system-deps]
+libinput = "1.0"
+libudev = "1.0"
+
+[features]
+default = []
+tracy = ["tracy-client"]
+
+[dependencies]
+anyhow = "1"
+ash = { git = "https://github.com/ash-rs/ash", default-features = true }
+axum = "0.8.8"
+byteorder = "1.5"
+bytes = "1.11"
+crossbeam-channel = "0.5"
+cursor-icon = "1"
+dasp = "0.11"
+dasp_interpolate = { version = "0.11", features = ["sinc"] }
+dasp_ring_buffer = "0.11"
+dasp_signal = "0.11"
+drm = "0.14"
+drm-fourcc = "2"
+futures = "0.3.31"
+glam = "0.34"
+image = "0.25"
+input-linux = "0.7"
+io-streams = "0.16.3"
+libc = "0.2"
+mio = "1"
+mio-timerfd = "0.2.0"
+oneshot = { version = "0.2", features = ["std"] }
+opus = "0.4"
+paste = "1"
+pathsearch = "0.2.0"
+pulseaudio = "0.3"
+rand = "0.10"
+rustix = { version = "1.1", features = ["mm", "mount"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.149"
+slotmap = "1"
+smithay = "0.7.0"
+tiny_id = "0.1.6"
+tokio = { version = "1.49.0", features = ["full"] }
+toml = "1"
+tower-http = { version = "0.7", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+wayland-protocols = { version="0.32", features=["server", "staging", "unstable"] }
+wayland-scanner = "0.31"
+wayland-server = "0.31"
+wtransport = { version = "0.7", features = ["self-signed"] }
+sha2 = "0.11"
+hex = "0.4"
+x11rb = { version = "0.13", features = ["all-extensions", "allow-unsafe-code"] }
+tracy-client = { version = "0.19", optional = true }
+
+[build-dependencies]
+system-deps = "9"
+xkbcommon = { version = "0.9", default-features = false }
+shader-slang = { git = "https://github.com/FloatyMonkey/slang-rs.git"}

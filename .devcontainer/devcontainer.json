@@ -1,0 +1,26 @@
+{
+  "name": "Veil",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "runArgs": [
+    "--name=veil-devcontainer",
+    "--hostname=veil-devcontainer",
+    "--runtime=nvidia"
+  ],
+  "remoteUser": "veildev",
+  "containerEnv": {
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "NVIDIA_DRIVER_CAPABILITIES": "all"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-azuretools.vscode-containers",
+        "dbaeumer.vscode-eslint",
+        "rvest.vs-code-prettier-eslint"
+      ]
+    }
+  }
+}

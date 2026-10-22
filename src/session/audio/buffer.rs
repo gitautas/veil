@@ -1,0 +1,352 @@
+use std::{collections::VecDeque, io};
+
+use byteorder::{BigEndian as BE, LittleEndian as LE, ReadBytesExt as _};
+use dasp_interpolate::sinc::Sinc;
+use dasp_ring_buffer as ring_buffer;
+use dasp_signal::{Signal, interpolate::Converter};
+use pulseaudio::protocol as pulse;
+
+/// Raw bytes go in, (optionally) resampled frames come out.
+pub enum PlaybackBuffer<F>
+where
+    F: dasp::Frame<Sample = f32>,
+{
+    Passthrough(Buffer<F>),
+    Resampling {
+        converter: Converter<Buffer<F>, Sinc<[F; 32]>>,
+        output_rate: u32,
+    },
+}
+
+impl<F> PlaybackBuffer<F>
+where
+    F: dasp::Frame<Sample = f32>,
+{
+    pub fn new(sample_spec: pulse::SampleSpec, output_spec: pulse::SampleSpec) -> Self {
+        assert_eq!(output_spec.channels as usize, F::CHANNELS);
+        assert!(
+            sample_spec.channels as usize >= F::CHANNELS,
+            "upmixing is not supported"
+        );
+
+        let buffer = Buffer::new(sample_spec);
+        if sample_spec.sample_rate == output_spec.sample_rate {
+            Self::Passthrough(buffer)
+        } else {
+            let ringbuf = ring_buffer::Fixed::from([F::EQUILIBRIUM; 32]);
+            let interpolator = Sinc::new(ringbuf);
+            Self::Resampling {
+                converter: Signal::from_hz_to_hz(
+                    buffer,
+                    interpolator,
+                    sample_spec.sample_rate as f64,
+                    output_spec.sample_rate as f64,
+                ),
+                output_rate: output_spec.sample_rate,
+            }
+        }
+    }
+
+    fn buffer(&self) -> &Buffer<F> {
+        match self {
+            PlaybackBuffer::Passthrough(buffer) => buffer,
+            PlaybackBuffer::Resampling { converter, .. } => converter.source(),
+        }
+    }
+
+    fn buffer_mut(&mut self) -> &mut Buffer<F> {
+        match self {
+            PlaybackBuffer::Passthrough(buffer) => buffer,
+            PlaybackBuffer::Resampling { converter, .. } => converter.source_mut(),
+        }
+    }
+
+    pub fn len_bytes(&self) -> usize {
+        self.buffer().len_bytes()
+    }
+
+    pub fn len_frames(&self) -> usize {
+        self.buffer().len_frames()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len_frames() == 0
+    }
+
+    pub fn write(&mut self, payload: &[u8]) {
+        let _ = io::Write::write_all(&mut self.buffer_mut().inner, payload);
+    }
+
+    /// Reads data from the buffer at the output sample rate, returning
+    /// `num_frames` at that rate, or None if there's insufficient data.
+    ///
+    /// Dropping the returned signal removes the remaining unread data.
+    pub fn drain(&mut self, num_frames: usize) -> Option<impl Signal<Frame = F> + '_> {
+        match self {
+            PlaybackBuffer::Passthrough(buffer) => buffer.drain(num_frames).map(EitherSignal::Left),
+            PlaybackBuffer::Resampling {
+                converter,
+                output_rate,
+            } => {
+                let buffer = converter.source();
+                let needed_frames = (buffer.sample_spec.sample_rate as usize * num_frames)
+                    .div_ceil(*output_rate as usize);
+
+                if buffer.len_frames() < needed_frames {
+                    return None;
+                }
+
+                Some(EitherSignal::Right(Drain {
+                    signal: converter,
+                    remaining: num_frames,
+                }))
+            }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.buffer_mut().inner.clear()
+    }
+}
+
+enum EitherSignal<L, R> {
+    Left(L),
+    Right(R),
+}
+
+impl<L, R> Signal for EitherSignal<L, R>
+where
+    L: Signal,
+    R: Signal<Frame = L::Frame>,
+{
+    type Frame = L::Frame;
+
+    fn next(&mut self) -> Self::Frame {
+        match self {
+            EitherSignal::Left(s) => Signal::next(s),
+            EitherSignal::Right(s) => Signal::next(s),
+        }
+    }
+
+    fn is_exhausted(&self) -> bool {
+        match self {
+            EitherSignal::Left(s) => s.is_exhausted(),
+            EitherSignal::Right(s) => s.is_exhausted(),
+        }
+    }
+}
+
+pub struct Buffer<F>
+where
+    F: dasp::Frame<Sample = f32>,
+{
+    inner: VecDeque<u8>,
+    sample_spec: pulse::SampleSpec,
+    bpp: usize,
+    _phantom: std::marker::PhantomData<F>,
+}
+
+impl<F> Buffer<F>
+where
+    F: dasp::Frame<Sample = f32>,
+{
+    pub fn new(sample_spec: pulse::SampleSpec) -> Self {
+        Self {
+            inner: VecDeque::new(),
+            sample_spec,
+            bpp: sample_spec.format.bytes_per_sample(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    fn len_bytes(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn len_frames(&self) -> usize {
+        let input_channels = self.sample_spec.channels as usize;
+        self.inner.len() / (input_channels * self.bpp)
+    }
+
+    fn read_frame(&mut self) -> Option<F> {
+        if self.len_frames() == 0 {
+            return None;
+        }
+
+        let frame = F::from_fn(|_| self.read_sample().unwrap());
+
+        // Throw away additional channels.
+        // TODO: be more intelligent about up/downmixing.
+        let input_channels = self.sample_spec.channels as usize;
+        for _ in 0..input_channels.saturating_sub(F::CHANNELS) {
+            let _ = self.read_sample();
+        }
+
+        Some(frame)
+    }
+
+    fn read_sample(&mut self) -> Option<F::Sample> {
+        use dasp::Sample;
+
+        match self.sample_spec.format {
+            pulse::SampleFormat::Float32Le => self.inner.read_f32::<LE>().ok(),
+            pulse::SampleFormat::Float32Be => self.inner.read_f32::<BE>().ok(),
+            pulse::SampleFormat::S16Le => self.inner.read_i16::<LE>().ok().map(Sample::from_sample),
+            pulse::SampleFormat::S16Be => self.inner.read_i16::<BE>().ok().map(Sample::from_sample),
+            pulse::SampleFormat::U8 => self.inner.read_u8().ok().map(Sample::from_sample),
+            pulse::SampleFormat::S32Le => self.inner.read_i32::<LE>().ok().map(Sample::from_sample),
+            pulse::SampleFormat::S32Be => self.inner.read_i32::<BE>().ok().map(Sample::from_sample),
+            pulse::SampleFormat::S24Le => self.inner.read_i24::<LE>().ok().map(Sample::from_sample),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl<F> Buffer<F>
+where
+    F: dasp::Frame<Sample = f32>,
+{
+    fn drain(&mut self, num_frames: usize) -> Option<Drain<'_, Self>> {
+        if self.len_frames() < num_frames {
+            return None; // Not enough data.
+        }
+
+        Some(Drain {
+            signal: self,
+            remaining: num_frames,
+        })
+    }
+}
+
+impl<F> Signal for Buffer<F>
+where
+    F: dasp::Frame<Sample = f32>,
+{
+    type Frame = F;
+
+    fn next(&mut self) -> Self::Frame {
+        self.read_frame()
+            .unwrap_or(<Self::Frame as dasp::Frame>::EQUILIBRIUM)
+    }
+}
+
+struct Drain<'a, S: Signal> {
+    signal: &'a mut S,
+    remaining: usize,
+}
+
+impl<S: Signal> Signal for Drain<'_, S> {
+    type Frame = S::Frame;
+
+    fn is_exhausted(&self) -> bool {
+        self.remaining == 0
+    }
+
+    fn next(&mut self) -> Self::Frame {
+        if self.remaining == 0 {
+            <Self::Frame as dasp::Frame>::EQUILIBRIUM
+        } else {
+            self.remaining -= 1;
+            Signal::next(&mut self.signal)
+        }
+    }
+}
+
+impl<S: Signal> Drop for Drain<'_, S> {
+    fn drop(&mut self) {
+        for _ in 0..self.remaining {
+            if self.signal.is_exhausted() {
+                break;
+            }
+
+            let _ = Signal::next(&mut self.signal);
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use byteorder::WriteBytesExt as _;
+    use dasp_signal as _;
+
+    use super::*;
+
+    #[test]
+    fn passthrough() {
+        let mut buf = PlaybackBuffer::<[f32; 2]>::new(
+            pulse::SampleSpec {
+                format: pulse::SampleFormat::Float32Le,
+                channels: 2,
+                sample_rate: 24000,
+            },
+            pulse::SampleSpec {
+                format: pulse::SampleFormat::Float32Le,
+                channels: 2,
+                sample_rate: 24000,
+            },
+        );
+
+        let mut data = vec![];
+        data.write_f32::<LE>(1.0).unwrap();
+        data.write_f32::<LE>(2.0).unwrap();
+        data.write_f32::<LE>(1.0).unwrap();
+        data.write_f32::<LE>(2.0).unwrap();
+        buf.write(&data);
+
+        assert_eq!(buf.len_bytes(), 16);
+        assert_eq!(buf.len_frames(), 2);
+        assert!(buf.drain(3).is_none());
+
+        {
+            let mut frames = buf.drain(2).unwrap();
+            assert_eq!(frames.next(), [1.0, 2.0]);
+            assert_eq!(frames.next(), [1.0, 2.0]);
+            assert!(frames.is_exhausted());
+            assert_eq!(frames.next(), [0.0, 0.0]);
+        }
+
+        assert!(buf.drain(1).is_none());
+    }
+
+    #[test]
+    fn downmix() {
+        let mut buf = PlaybackBuffer::<[f32; 2]>::new(
+            pulse::SampleSpec {
+                format: pulse::SampleFormat::Float32Le,
+                channels: 5,
+                sample_rate: 24000,
+            },
+            pulse::SampleSpec {
+                format: pulse::SampleFormat::Float32Le,
+                channels: 2,
+                sample_rate: 24000,
+            },
+        );
+
+        let mut data = vec![];
+        data.write_f32::<LE>(1.0).unwrap();
+        data.write_f32::<LE>(1.0).unwrap();
+        data.write_f32::<LE>(2.0).unwrap();
+        data.write_f32::<LE>(2.0).unwrap();
+        data.write_f32::<LE>(2.0).unwrap();
+        data.write_f32::<LE>(-1.0).unwrap();
+        data.write_f32::<LE>(-1.0).unwrap();
+        data.write_f32::<LE>(-2.0).unwrap();
+        data.write_f32::<LE>(-2.0).unwrap();
+        data.write_f32::<LE>(-2.0).unwrap();
+        buf.write(&data);
+
+        assert_eq!(buf.len_bytes(), 40);
+        assert_eq!(buf.len_frames(), 2);
+        assert!(buf.drain(3).is_none());
+
+        {
+            let mut frames = buf.drain(2).unwrap();
+            assert_eq!(frames.next(), [1.0, 1.0]);
+            assert_eq!(frames.next(), [-1.0, -1.0]);
+            assert!(frames.is_exhausted());
+        }
+
+        assert!(buf.drain(1).is_none());
+    }
+}

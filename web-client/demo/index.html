@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veil</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --panel-w: 400px;
+      --bg-panel: #0a0a10;
+      --line: rgba(255,255,255,0.07);
+      --dim: rgba(255,255,255,0.32);
+      --text: rgba(255,255,255,0.78);
+      --accent: #7c6bea;
+      --accent-hover: #6a59d6;
+      --good: #4ade80;
+      --warn: #facc15;
+      --bad: #f87171;
+      --blue: #60a5fa;
+      --orange: #fb923c;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      color: #e0e0e0;
+    }
+
+    body { display: flex; }
+
+    /* ── Stream area ─────────────────────────────────────── */
+    .canvas-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #stream-canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      outline: none;
+    }
+
+    /* ── Mouse capture ───────────────────────────────────── */
+    /* While captured the browser hides its cursor; we draw the app's. */
+    #vcursor {
+      position: absolute; left: 0; top: 0; z-index: 5;
+      pointer-events: none; display: none; image-rendering: pixelated;
+    }
+    #captureBadge {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      z-index: 6; pointer-events: none;
+      padding: 5px 11px; border-radius: 999px;
+      background: rgba(10,10,16,0.82); border: 1px solid var(--line);
+      font-size: 0.7rem; color: var(--text); white-space: nowrap;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #captureBadge.show { opacity: 1; }
+    #captureBadge b { color: #fff; }
+    #captureBadge kbd {
+      font-family: inherit; font-size: 0.64rem; padding: 0 4px; border-radius: 3px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+    }
+    #captureBadge.want { border-color: rgba(250,204,21,0.5); }
+
+    /* ── Disconnected overlay ────────────────────────────── */
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 10;
+    }
+    #overlay.hidden { display: none; }
+    .overlay-icon { opacity: 0.18; }
+    #overlay-status {
+      font-size: 0.92rem;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Side panel ──────────────────────────────────────── */
+    #panel {
+      width: var(--panel-w);
+      flex-shrink: 0;
+      height: 100%;
+      overflow-y: auto;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--line);
+      font-size: 0.74rem;
+      color: var(--text);
+    }
+    body.panel-collapsed #panel { display: none; }
+
+    #panelToggle {
+      position: fixed;
+      top: 10px;
+      right: calc(var(--panel-w) + 10px);
+      z-index: 30;
+      padding: 4px 9px;
+      background: rgba(10,10,16,0.75);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--dim);
+      font-size: 0.68rem;
+      cursor: pointer;
+    }
+    #panelToggle:hover { color: #fff; }
+    body.panel-collapsed #panelToggle { right: 10px; }
+
+    .section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    .section-title {
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      margin-bottom: 9px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title .right { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; }
+
+    /* Connection header */
+    .conn-row { display: flex; align-items: center; gap: 8px; }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      flex-shrink: 0; background: #444; transition: background 0.3s;
+    }
+    .dot.connected    { background: var(--good); }
+    .dot.connecting   { background: var(--warn); animation: pulse 1s infinite; }
+    .dot.failed, .dot.disconnected, .dot.closed { background: var(--bad); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.25} }
+    .conn-state {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.09em; color: rgba(255,255,255,0.9);
+    }
+    .conn-note { margin-left: auto; color: var(--dim); font-size: 0.66rem; }
+    .url-row { display: flex; gap: 6px; margin-top: 9px; }
+
+    input[type=text], input[type=number], select {
+      padding: 5px 8px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.11);
+      border-radius: 5px;
+      color: #ddd;
+      font-size: 0.74rem;
+      font-family: inherit;
+      min-width: 0;
+    }
+    input:focus, select:focus { outline: none; border-color: rgba(124,107,234,0.65); }
+    select option { background: #15151d; }
+    .url-row input { flex: 1; }
+
+    /* Viewers */
+    .viewers { margin-top: 9px; }
+    .viewers-summary { font-size: 0.68rem; color: var(--dim); }
+    .viewers-summary b { color: var(--text); }
+    .viewer-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .viewer {
+      font-size: 0.62rem; padding: 2px 7px; border-radius: 999px;
+      background: rgba(255,255,255,0.06); color: var(--text); white-space: nowrap;
+    }
+    .viewer.you { background: rgba(124,107,234,0.22); color: #c8c0ff; }
+    .viewer.active::before { content: '● '; color: var(--good); }
+    .viewer small { color: var(--dim); }
+
+    .btn {
+      padding: 5px 12px;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-danger  { background: #b83232; color: #fff; }
+    .btn-danger:hover:not(:disabled) { background: #9c2929; }
+    .btn-ghost { background: rgba(255,255,255,0.07); color: var(--text); }
+    .btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.13); }
+
+    /* Key/value grid */
+    .kv {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 5px 12px;
+      align-items: baseline;
+    }
+    .kv dt { color: var(--dim); font-size: 0.66rem; white-space: nowrap; }
+    .kv dd {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      background: rgba(255,255,255,0.08);
+      margin-left: 4px;
+    }
+    .tag.amd { background: rgba(237,28,36,0.22); color: #ff9aa0; }
+    .tag.nvidia { background: rgba(118,185,0,0.22); color: #c4ec7a; }
+
+    /* Graphs */
+    .graph-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+    .graph-label {
+      width: 52px; flex-shrink: 0;
+      font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim);
+    }
+    .sparkline { flex: 1; height: 30px; display: block; min-width: 0; }
+    .graph-val {
+      width: 62px; text-align: right;
+      font-size: 0.82rem; font-weight: 700; font-variant-numeric: tabular-nums; color: #eee;
+    }
+    .graph-val small { font-size: 0.6rem; color: var(--dim); font-weight: 500; }
+
+    /* Latency breakdown bar */
+    .lat-bar {
+      display: flex; height: 8px; border-radius: 4px; overflow: hidden;
+      background: rgba(255,255,255,0.05); margin: 8px 0 5px;
+    }
+    .lat-bar > div { height: 100%; transition: width 0.4s; }
+    .lat-legend { display: flex; gap: 10px; font-size: 0.64rem; color: var(--dim); flex-wrap: wrap; }
+    .lat-legend span::before {
+      content: ''; display: inline-block; width: 7px; height: 7px;
+      border-radius: 2px; margin-right: 4px; vertical-align: middle; background: var(--c);
+    }
+    .lat-legend b { color: var(--text); font-weight: 600; }
+
+    .stat-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 6px; margin-top: 10px;
+    }
+    .stat-label { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+    .stat-val { font-size: 0.76rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    /* Settings form */
+    .form { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 7px 10px; align-items: center; }
+    .form > *, .gpu-row > * { min-width: 0; }
+    .form select, .form input[type=number] { width: 100%; }
+    .form label { color: var(--dim); font-size: 0.68rem; }
+    .form .full { grid-column: span 2; }
+    .preset-row { display: flex; align-items: center; gap: 8px; }
+    .preset-row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .preset-row output { width: 92px; font-size: 0.66rem; color: var(--text); text-align: right; }
+    .form-actions { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+    .form-actions .hint { margin-left: auto; font-size: 0.64rem; color: var(--dim); }
+    .changed { border-color: rgba(250,204,21,0.6) !important; }
+    .gpu-row { display: flex; gap: 6px; }
+    .gpu-row select { flex: 1; }
+
+    /* Session log */
+    .log-wrap { overflow-x: auto; margin: 0 -4px; }
+    table.log { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    .log th, .log td { padding: 5px 3px; text-align: right; white-space: nowrap; }
+    .log th {
+      font-size: 0.56rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--dim); border-bottom: 1px solid var(--line);
+    }
+    .log td { font-size: 0.68rem; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .log td:first-child, .log th:first-child { text-align: left; }
+    .log td.cfg { color: #fff; font-weight: 600; line-height: 1.3; white-space: normal; min-width: 120px; }
+    .log td.cfg small { display: block; color: var(--dim); font-weight: 500; font-size: 0.6rem; }
+    .log tr.live td { background: rgba(124,107,234,0.1); }
+    .log tr.live td.cfg::after { content: ' ●'; color: var(--good); font-size: 0.6rem; }
+    .log .best { color: var(--good); }
+    .log-empty { color: var(--dim); font-size: 0.68rem; padding: 6px 0; }
+
+    /* Sound */
+    .sound-row { display: flex; align-items: center; gap: 8px; }
+    .sound-row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .sound-row output { width: 34px; text-align: right; font-size: 0.66rem; }
+    #soundOverlay {
+      position: absolute; left: 12px; bottom: 12px; z-index: 6;
+      padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
+      background: rgba(10,10,16,0.82); color: var(--text); font-size: 0.72rem;
+      cursor: pointer; display: none;
+    }
+    #soundOverlay:hover { color: #fff; border-color: rgba(124,107,234,0.6); }
+
+    /* Gamepads */
+    .pad-card {
+      border: 1px solid var(--line); border-radius: 8px;
+      padding: 9px 10px; margin-bottom: 8px; background: rgba(255,255,255,0.02);
+    }
+    .pad-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+    .pad-index {
+      font-size: 0.62rem; font-weight: 700; color: var(--dim);
+      background: rgba(255,255,255,0.07); border-radius: 4px; padding: 1px 5px;
+    }
+    .pad-name { font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pad-rumble {
+      display: none; margin-left: auto; font-size: 0.62rem; padding: 1px 5px; border-radius: 4px;
+      background: var(--warn); color: #000; font-weight: 700;
+    }
+    .pad-card.rumbling .pad-rumble { display: inline-block; }
+    .pad-row { display: flex; gap: 6px; font-size: 0.66rem; margin: 3px 0; line-height: 1.35; }
+    .pad-row .k { color: var(--dim); width: 44px; flex-shrink: 0; }
+    .pad-row .v { min-width: 0; overflow-wrap: anywhere; }
+    .pad-ok { color: var(--good); }
+    .pad-err { color: var(--bad); }
+    .pad-wait { color: var(--warn); }
+    .pad-viz { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+    .stick {
+      position: relative; width: 44px; height: 44px; flex-shrink: 0;
+      border-radius: 50%; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.03);
+    }
+    .stick::before, .stick::after {
+      content: ''; position: absolute; background: rgba(255,255,255,0.07);
+    }
+    .stick::before { left: 50%; top: 4px; bottom: 4px; width: 1px; }
+    .stick::after { top: 50%; left: 4px; right: 4px; height: 1px; }
+    .stick .knob {
+      position: absolute; width: 12px; height: 12px; border-radius: 50%;
+      background: var(--accent); left: 16px; top: 16px; transition: background 0.1s;
+    }
+    .stick.pressed .knob { background: #fff; }
+    .triggers { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+    .trigger { display: flex; align-items: center; gap: 4px; font-size: 0.56rem; color: var(--dim); }
+    .trigger .bar { width: 28px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.07); overflow: hidden; }
+    .trigger .fill { height: 100%; width: 0; background: var(--orange); }
+    .buttons { display: flex; flex-wrap: wrap; gap: 3px; flex: 1; min-width: 0; }
+    .btn-chip {
+      min-width: 20px; padding: 2px 4px; border-radius: 4px; text-align: center;
+      font-size: 0.56rem; font-weight: 700; color: var(--dim);
+      background: rgba(255,255,255,0.06); transition: background 0.06s, color 0.06s;
+    }
+    .btn-chip.on { background: var(--accent); color: #fff; }
+    .pad-empty { color: var(--dim); font-size: 0.68rem; line-height: 1.45; }
+
+    /* Compositor */
+    .win-card {
+      border: 1px solid var(--line); border-radius: 8px;
+      padding: 8px 10px; margin-top: 7px; background: rgba(255,255,255,0.02);
+    }
+    .win-card.problem { border-color: rgba(250,204,21,0.35); }
+    .win-card.bad { border-color: rgba(248,113,113,0.4); }
+    .win-head { display: flex; align-items: center; gap: 6px; }
+    .win-title { font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+    .chip {
+      flex-shrink: 0; font-size: 0.56rem; font-weight: 700; letter-spacing: 0.03em;
+      padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--dim);
+    }
+    .chip.good { background: rgba(74,222,128,0.16); color: var(--good); }
+    .chip.warn { background: rgba(250,204,21,0.16); color: var(--warn); }
+    .chip.bad  { background: rgba(248,113,113,0.16); color: var(--bad); }
+    .chip.x11  { background: rgba(251,146,60,0.16); color: var(--orange); }
+    .chip.wl   { background: rgba(96,165,250,0.16); color: var(--blue); }
+    .win-meta { font-size: 0.64rem; color: var(--dim); margin-top: 4px; line-height: 1.4; }
+    .win-meta b { color: var(--text); font-weight: 600; }
+    .win-problem { font-size: 0.66rem; color: var(--warn); margin-top: 4px; line-height: 1.35; }
+    .win-card.bad .win-problem { color: var(--bad); }
+    .win-raise { padding: 2px 8px; font-size: 0.62rem; }
+    details.x11 { margin-top: 9px; }
+    details.x11 summary { cursor: pointer; color: var(--dim); font-size: 0.66rem; }
+    .x11-row { font-size: 0.64rem; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); line-height: 1.4; }
+    .x11-row .p { color: var(--bad); }
+    .comp-empty { color: var(--dim); font-size: 0.68rem; margin-top: 6px; }
+
+    #compat-banner {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: #5a1a1a; color: #ffaaaa;
+      padding: 8px 16px; font-size: 0.83rem; display: none; z-index: 200;
+    }
+
+    #toast {
+      position: fixed; bottom: 16px; left: 16px; z-index: 40;
+      padding: 8px 12px; border-radius: 7px;
+      background: rgba(10,10,16,0.92); border: 1px solid var(--line);
+      font-size: 0.74rem; color: var(--text);
+      opacity: 0; transform: translateY(6px); transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: none; }
+  </style>
+</head>
+<body>
+
+<div id="compat-banner">
+  <strong>Browser not supported:</strong> WebTransport requires Chrome 97+ (desktop or Android).
+</div>
+
+<!-- Stream -->
+<div class="canvas-wrap">
+  <canvas id="stream-canvas" width="1920" height="1080" tabindex="0"></canvas>
+  <img id="vcursor" alt="">
+  <button id="soundOverlay" title="Browsers need a click before playing sound">🔇 Click to enable sound</button>
+  <div id="captureBadge"></div>
+
+  <div id="overlay">
+    <svg class="overlay-icon" width="54" height="54" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3"
+        d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14
+           M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+    </svg>
+    <span id="overlay-status">Disconnected</span>
+  </div>
+</div>
+
+<button id="panelToggle" title="Toggle panel (Tab)">Panel ⇥</button>
+
+<!-- Side panel -->
+<aside id="panel">
+
+  <div class="section">
+    <div class="conn-row">
+      <div class="dot disconnected" id="connDot"></div>
+      <span class="conn-state" id="connState">Disconnected</span>
+      <span class="conn-note" id="connNote"></span>
+    </div>
+    <div class="url-row">
+      <input type="text" id="serverUrl" placeholder="https://host:7801" spellcheck="false">
+      <button class="btn btn-primary" id="connectBtn">Connect</button>
+      <button class="btn btn-danger" id="disconnBtn" disabled>Disconnect</button>
+    </div>
+    <div class="viewers" id="viewers" style="display:none">
+      <div class="viewers-summary" id="viewersSummary"></div>
+      <div class="viewer-list" id="viewerList"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Server</div>
+    <dl class="kv">
+      <dt>GPU</dt>          <dd id="infoGpu">—</dd>
+      <dt>Driver</dt>       <dd id="infoDriver">—</dd>
+      <dt>Write path</dt>   <dd id="infoWrite" title="How converted frames reach the encoder">—</dd>
+      <dt>Codec</dt>        <dd id="infoCodec">—</dd>
+      <dt>Rate control</dt> <dd id="infoRc">—</dd>
+      <dt>Stream</dt>       <dd id="infoStream">—</dd>
+      <dt>GOP / layers</dt> <dd id="infoGop">—</dd>
+    </dl>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Live <span class="right" id="liveNote"></span></div>
+    <div class="graph-row">
+      <span class="graph-label">FPS</span>
+      <canvas class="sparkline" id="fpsCanvas"></canvas>
+      <span class="graph-val" id="valFps">—</span>
+    </div>
+    <div class="graph-row">
+      <span class="graph-label">Mbps</span>
+      <canvas class="sparkline" id="bitrateCanvas"></canvas>
+      <span class="graph-val" id="valBitrate">—</span>
+    </div>
+    <div class="graph-row">
+      <span class="graph-label">Latency</span>
+      <canvas class="sparkline" id="latencyCanvas"></canvas>
+      <span class="graph-val" id="valLatency">—</span>
+    </div>
+
+    <div class="lat-bar" title="Measured latency components">
+      <div id="barEncode" style="background: var(--orange); width: 0"></div>
+      <div id="barNet"    style="background: var(--blue);   width: 0"></div>
+      <div id="barDecode" style="background: var(--good);   width: 0"></div>
+    </div>
+    <div class="lat-legend">
+      <span style="--c: var(--orange)">Encode <b id="legEncode">—</b></span>
+      <span style="--c: var(--blue)">Network ½RTT <b id="legNet">—</b></span>
+      <span style="--c: var(--good)">Decode <b id="legDecode">—</b></span>
+    </div>
+
+    <div class="stat-grid">
+      <div><div class="stat-label">Decoded</div><div class="stat-val" id="statDecoded">—</div></div>
+      <div><div class="stat-label">Dropped</div><div class="stat-val" id="statDropped">—</div></div>
+      <div><div class="stat-label">Queue</div><div class="stat-val" id="statQueue">—</div></div>
+      <div><div class="stat-label">Encode max</div><div class="stat-val" id="statEncMax">—</div></div>
+      <div><div class="stat-label">Keyframes/s</div><div class="stat-val" id="statKeys">—</div></div>
+      <div><div class="stat-label">Frame size</div><div class="stat-val" id="statFrameKb">—</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Sound <span class="right" id="soundNote"></span></div>
+    <div class="sound-row">
+      <button class="btn btn-primary" id="soundEnable">Enable sound</button>
+      <button class="btn btn-ghost" id="soundMute" style="display:none">Mute</button>
+      <input type="range" id="soundVolume" min="0" max="100" step="1" value="100" title="Volume">
+      <output id="soundVolumeLabel">100%</output>
+    </div>
+    <div class="stat-grid">
+      <div><div class="stat-label">Buffered</div><div class="stat-val" id="soundBuffered">—</div></div>
+      <div><div class="stat-label">Underruns</div><div class="stat-val" id="soundUnderruns">—</div></div>
+      <div><div class="stat-label">Trims</div><div class="stat-val" id="soundTrims">—</div></div>
+      <div><div class="stat-label">Packets/s</div><div class="stat-val" id="soundRate">—</div></div>
+      <div><div class="stat-label">Bitrate</div><div class="stat-val" id="soundBitrate">—</div></div>
+      <div><div class="stat-label">Device latency</div><div class="stat-val" id="soundLatency">—</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Compositor <span class="right" id="compNote"></span></div>
+    <dl class="kv">
+      <dt>Display</dt> <dd id="compDisplay">—</dd>
+      <dt>App</dt>     <dd id="compApp">—</dd>
+      <dt>Sockets</dt> <dd id="compSockets">—</dd>
+      <dt>Clients</dt> <dd id="compClients">—</dd>
+    </dl>
+    <div id="compWindows"></div>
+    <details class="x11" id="compX11Wrap">
+      <summary id="compX11Summary">X11 windows</summary>
+      <div id="compX11"></div>
+    </details>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Gamepads <span class="right" id="padNote"></span></div>
+    <div id="padList"></div>
+    <div class="pad-empty" id="padEmpty">
+      No gamepads detected. Connect a controller and press a button on it — browsers
+      only reveal gamepads after they've been used on the page.
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Settings <span class="right" id="settingsNote"></span></div>
+    <div class="form">
+      <label for="setGpu">GPU</label>
+      <div class="gpu-row">
+        <select id="setGpu"></select>
+        <button class="btn btn-ghost" id="switchGpuBtn" disabled title="Restarts Veil and the app on this GPU">Restart</button>
+      </div>
+
+      <label for="setCodec">Codec</label>
+      <select id="setCodec">
+        <option value="h264">H.264</option>
+        <option value="h265">H.265 / HEVC</option>
+        <option value="av1">AV1 (experimental)</option>
+      </select>
+
+      <label for="setPreset">Quality</label>
+      <div class="preset-row">
+        <input type="range" id="setPreset" min="0" max="9" step="1" value="0">
+        <output id="presetLabel">0</output>
+      </div>
+
+      <label for="setRes">Resolution</label>
+      <select id="setRes">
+        <option value="1280x720">1280×720</option>
+        <option value="1600x900">1600×900</option>
+        <option value="1920x1080">1920×1080</option>
+        <option value="2560x1440">2560×1440</option>
+        <option value="3840x2160">3840×2160</option>
+      </select>
+
+      <label for="setFps">Frame rate</label>
+      <select id="setFps">
+        <option value="30">30 fps</option>
+        <option value="60">60 fps</option>
+        <option value="90">90 fps</option>
+        <option value="120">120 fps</option>
+        <option value="144">144 fps</option>
+      </select>
+
+      <label for="setGop">GOP</label>
+      <input type="number" id="setGop" min="1" max="600" step="1" title="Frames between keyframes">
+
+      <label for="setInFlight">In flight</label>
+      <select id="setInFlight" title="Encoder output buffers in flight; 1 = lowest latency">
+        <option value="1">1 (lowest latency)</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="applyBtn" disabled>Apply</button>
+      <button class="btn btn-ghost" id="revertBtn" disabled>Revert</button>
+      <span class="hint" id="applyHint">Rebuilds the encoder</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">
+      Session log
+      <span class="right">
+        <button class="btn btn-ghost" id="copyLogBtn" title="Copy as a Markdown table">Copy</button>
+        <button class="btn btn-ghost" id="clearLogBtn">Clear</button>
+      </span>
+    </div>
+    <div class="log-wrap">
+      <table class="log">
+        <thead>
+          <tr>
+            <th>Config</th><th>Time</th><th>FPS</th><th>Mbps</th>
+            <th title="Server encode, avg">Enc</th><th title="Client decode">Dec</th><th>RTT</th><th title="Dropped frames">Drop</th>
+          </tr>
+        </thead>
+        <tbody id="logBody"></tbody>
+      </table>
+      <div class="log-empty" id="logEmpty">A row is added for each configuration. Averages skip the first 2 s after a change.</div>
+    </div>
+  </div>
+
+</aside>
+
+<div id="toast"></div>
+
+<script>
+  // ?server=https://host:port picks another server (e.g. a test instance).
+  const host = location.hostname || 'localhost';
+  document.getElementById('serverUrl').value =
+    new URLSearchParams(location.search).get('server') || `https://${host}:7801`;
+  if (typeof WebTransport === 'undefined') {
+    document.getElementById('compat-banner').style.display = 'block';
+  }
+</script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

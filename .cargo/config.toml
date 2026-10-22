@@ -1,0 +1,10 @@
+# Project-local Cargo configuration.
+#
+# Sets VULKAN_SDK automatically so `cargo build`/`cargo check` work without
+# manually sourcing .vulkanSDK/setup-env.sh first.
+#
+# The `relative = true` flag resolves the path relative to this file's
+# directory (the project root), giving an absolute path at build time.
+
+[env]
+VULKAN_SDK = { value = ".vulkanSDK/x86_64", relative = true }

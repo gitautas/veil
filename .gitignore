@@ -1,0 +1,23 @@
+**/target
+**/build
+**/.cache
+mm/
+docs/
+
+# Added by cargo
+
+/target
+old/
+runtime/
+
+# Added by cargo
+#
+# already existing elements were commented out
+
+#/target
+
+# Vulkan SDK
+.vulkanSDK
+
+# npm
+node_modules/
