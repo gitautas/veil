@@ -255,6 +255,9 @@ export interface WindowInfo {
 
 // ─── Server-side info ───────────────────────────────────────────────────────
 
+/** Which controller to emulate for a pad; 'auto' picks by the pad's vendor. */
+export type GamepadType = 'auto' | 'xbox' | 'playstation';
+
 /** A video codec, as the server names it. AV1 is experimental. */
 export type VideoCodecName = 'h264' | 'h265' | 'av1';
 
@@ -301,12 +304,16 @@ export interface GamepadStatus {
   /** The pad's index in that viewer's browser. */
   index: number;
   name: string;
+  /** The pad type this client asked for. */
+  layout: 'xbox360' | 'dualsense';
   /** What the virtual device presents itself as to games. */
   emulates: string;
   /** The virtual device's evdev node, if it was created. */
   device: string | null;
   /** Why the virtual device couldn't be created, if it wasn't. */
   error: string | null;
+  /** Why it isn't the type asked for, if it isn't (e.g. a DualSense that fell back to Xbox). */
+  notice: string | null;
   /** Input events the server has received for this gamepad. */
   events: number;
 }

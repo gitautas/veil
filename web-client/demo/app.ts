@@ -6,7 +6,9 @@ import {
   ServerStats,
   StreamParamsRequest,
   GamepadStatus,
+  GamepadType,
   VideoCodecName,
+  detectGamepadLayout,
   CompositorState,
   ViewerList,
   AudioPlayer,
@@ -642,6 +644,8 @@ interface PadCard {
   root: HTMLDivElement;
   server: HTMLSpanElement;
   browser: HTMLSpanElement;
+  type: HTMLSelectElement;
+  notice: HTMLDivElement;
   left: HTMLDivElement;
   right: HTMLDivElement;
   lt: HTMLDivElement;
@@ -650,6 +654,22 @@ interface PadCard {
 }
 
 const padCards = new Map<number, PadCard>();
+
+/** The emulation choice for a controller model (by browser pad ID). */
+function loadPadType(padId: string): GamepadType {
+  try {
+    const v = localStorage.getItem(`veil.padType.${padId}`);
+    if (v === 'xbox' || v === 'playstation') return v;
+  } catch { /* storage unavailable */ }
+  return 'auto';
+}
+
+function savePadType(padId: string, type: GamepadType) {
+  try {
+    if (type === 'auto') localStorage.removeItem(`veil.padType.${padId}`);
+    else localStorage.setItem(`veil.padType.${padId}`, type);
+  } catch { /* storage unavailable */ }
+}
 
 function makeCard(pad: Gamepad): PadCard {
   const { name, usb } = parsePadId(pad.id);
@@ -662,7 +682,15 @@ function makeCard(pad: Gamepad): PadCard {
       <span class="pad-rumble" title="The game is rumbling this pad">Rumble</span>
     </div>
     <div class="pad-row"><span class="k">Browser</span><span class="v" data-browser></span></div>
+    <div class="pad-row"><span class="k">Emulate</span>
+      <select data-type title="Which controller games see. Changing it replugs the pad.">
+        <option value="auto">Auto (${detectGamepadLayout(pad.id) === 'playstation' ? 'DualSense' : 'Xbox 360'})</option>
+        <option value="xbox">Xbox 360</option>
+        <option value="playstation">DualSense</option>
+      </select>
+    </div>
     <div class="pad-row"><span class="k">Server</span><span class="v" data-server></span></div>
+    <div class="pad-row pad-notice" data-notice style="display:none"></div>
     <div class="pad-viz">
       <div class="stick" data-left><div class="knob"></div></div>
       <div class="stick" data-right><div class="knob"></div></div>
@@ -686,12 +714,21 @@ function makeCard(pad: Gamepad): PadCard {
     root,
     browser: q('[data-browser]'),
     server: q('[data-server]'),
+    type: q('[data-type]'),
+    notice: q('[data-notice]'),
     left: q('[data-left]'),
     right: q('[data-right]'),
     lt: q('[data-lt]'),
     rt: q('[data-rt]'),
     chips,
   };
+  card.type.value = loadPadType(pad.id);
+  client?.setGamepadType(pad.index, card.type.value as GamepadType);
+  card.type.addEventListener('change', () => {
+    const type = card.type.value as GamepadType;
+    savePadType(pad.id, type);
+    client?.setGamepadType(pad.index, type);
+  });
   card.browser.textContent = [
     usb && `USB ${usb}`,
     standard ? 'standard mapping' : 'non-standard mapping (buttons may be mislabelled)',
@@ -720,6 +757,8 @@ function renderPadInfo() {
       card.server.textContent = `${s.emulates} at ${s.device ?? 'unknown node'} · ` +
         `${s.events.toLocaleString()} events` + (rate !== undefined ? ` (${rate.toFixed(0)}/s)` : '');
     }
+    card.notice.textContent = (connected && s?.notice) || '';
+    card.notice.style.display = card.notice.textContent ? '' : 'none';
   }
   const failed = [...padStatus.values()].filter((s) => s.error).length;
   padNote.textContent = [
@@ -1117,6 +1156,7 @@ async function connect(): Promise<boolean> {
     debug:           false,
   });
   client = c;
+  for (const [index, card] of padCards) c.setGamepadType(index, card.type.value as GamepadType);
 
   c.on('statechange', (state) => {
     if (client !== c) return;

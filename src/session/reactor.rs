@@ -665,8 +665,10 @@ impl Reactor {
 
         // Send pending controller SYN_REPORT events, and forward any rumble
         // games asked for.
+        let mut device_appeared = false;
         for (id, dev) in self.gamepads.iter_mut() {
             dev.frame();
+            device_appeared |= dev.find_device();
             for rumble in dev.poll_rumble() {
                 self.session_handle.dispatch(SessionEvent::GamepadRumble {
                     id: *id,
@@ -675,6 +677,10 @@ impl Reactor {
                     duration_ms: rumble.duration_ms,
                 });
             }
+        }
+
+        if device_appeared {
+            self.publish_gamepads();
         }
 
         // Flush events to the app.
@@ -901,15 +907,8 @@ impl Reactor {
                 self.compositor.focus_window(id)?;
                 self.publish_compositor_state();
             }
-            ControlMessage::GamepadAvailable(id) => {
-                use std::collections::btree_map::Entry;
-                if let Entry::Vacant(e) = self.gamepads.entry(id) {
-                    e.insert(self.input_manager.plug_gamepad(
-                        id,
-                        input::GamepadLayout::GenericDualStick,
-                        false,
-                    )?);
-                }
+            ControlMessage::GamepadAvailable(id, layout) => {
+                self.ensure_gamepad(id, layout);
                 self.publish_gamepads();
             }
             ControlMessage::GamepadUnavailable(id) => {
@@ -927,7 +926,7 @@ impl Reactor {
                 axis_code,
                 value,
             } => {
-                self.ensure_gamepad(id);
+                self.ensure_gamepad(id, None);
                 if let Some(gamepad) = self.gamepads.get_mut(&id) {
                     gamepad.axis(axis_code, value);
                 }
@@ -937,7 +936,7 @@ impl Reactor {
                 trigger_code,
                 value,
             } => {
-                self.ensure_gamepad(id);
+                self.ensure_gamepad(id, None);
                 if let Some(gamepad) = self.gamepads.get_mut(&id) {
                     gamepad.trigger(trigger_code, value);
                 }
@@ -947,13 +946,13 @@ impl Reactor {
                 button_code,
                 state,
             } => {
-                self.ensure_gamepad(id);
+                self.ensure_gamepad(id, None);
                 if let Some(gamepad) = self.gamepads.get_mut(&id) {
                     gamepad.input(button_code, state);
                 }
             }
-            ControlMessage::GamepadState { id, seq, state } => {
-                self.ensure_gamepad(id);
+            ControlMessage::GamepadState { id, seq, state, layout } => {
+                self.ensure_gamepad(id, layout);
                 if let Some(gamepad) = self.gamepads.get_mut(&id) {
                     gamepad.apply_state(seq, state);
                 }
@@ -1118,14 +1117,26 @@ impl Reactor {
     }
 
     /// Plug a virtual gamepad on first input if it hasn't been registered yet.
-    fn ensure_gamepad(&mut self, id: u64) {
-        if !self.gamepads.contains_key(&id) {
-            match self.input_manager.plug_gamepad(id, input::GamepadLayout::GenericDualStick, false) {
-                Ok(dev) => { self.gamepads.insert(id, dev); }
-                Err(e)  => { warn!("failed to plug virtual gamepad {id}: {e:#}"); }
+    /// Make sure pad `id` exists, as `layout` if given. A pad of another
+    /// layout is replaced (unplugged and plugged again).
+    fn ensure_gamepad(&mut self, id: u64, layout: Option<GamepadLayout>) {
+        let existing = self.gamepads.get(&id).map(|pad| (pad.layout, pad.permanent));
+        let layout = match (existing, layout) {
+            (Some(_), None) => return,
+            (Some((current, _)), Some(wanted)) if current == wanted => return,
+            (Some((_, true)), Some(_)) => return, // Permanent pads stay as they are.
+            (Some((current, _)), Some(wanted)) => {
+                info!(id, ?current, ?wanted, "replacing virtual gamepad");
+                self.gamepads.remove(&id);
+                wanted
             }
-            self.publish_gamepads();
+            (None, layout) => layout.unwrap_or_default(),
+        };
+        match self.input_manager.plug_gamepad(id, layout, false) {
+            Ok(dev) => { self.gamepads.insert(id, dev); }
+            Err(e)  => { warn!("failed to plug virtual gamepad {id}: {e:#}"); }
         }
+        self.publish_gamepads();
     }
 
     /// Tell clients what the compositor is showing (and what it isn't).

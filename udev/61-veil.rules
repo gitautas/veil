@@ -1,0 +1,19 @@
+# Device access for Veil's virtual gamepads, for users in the "input" group.
+# Install with:
+#   sudo cp udev/61-veil.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload
+#   sudo modprobe uhid uinput
+# (Loading the modules makes udev apply the rules now; after a reboot,
+# static_node sets the permissions before the modules are loaded.)
+
+# Xbox 360 pads are created through uinput.
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
+
+# DualSense pads are created through uhid, so the kernel's hid-playstation
+# driver binds to them like a real pad.
+KERNEL=="uhid", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uhid"
+
+# Steam and SDL read DualSense pads (including Veil's virtual ones) through
+# hidraw. Steam's own rules only grant that to the active desktop session,
+# which a headless Steam may not be.
+KERNEL=="hidraw*", KERNELS=="0003:054C:0CE6.*", GROUP="input", MODE="0660"

@@ -566,6 +566,8 @@ var VeilClient = class {
     // compare the current state against itself → no events ever sent.
     /** Per browser pad: snapshot sequence, last snapshot sent, and when. */
     this.gamepads = /* @__PURE__ */ new Map();
+    /** Per browser pad: which controller to emulate, if not detected. */
+    this.gamepadTypes = /* @__PURE__ */ new Map();
     /** Rumble that outlasts the browser's 5 s limit is replayed by this timer. */
     this.rumbleTimers = /* @__PURE__ */ new Map();
     this.abortController = null;
@@ -725,6 +727,20 @@ var VeilClient = class {
   }
   setVolume(volume) {
     this.audioPlayer.setVolume(volume);
+  }
+  /**
+   * Choose which controller the server emulates for a pad: 'auto' (the
+   * default) emulates a DualSense for PlayStation pads and an Xbox 360 pad
+   * for everything else. Changing it replaces the virtual device.
+   */
+  setGamepadType(index, type) {
+    if (type === "auto") this.gamepadTypes.delete(index);
+    else this.gamepadTypes.set(index, type);
+  }
+  /** The controller the server is asked to emulate for a pad. */
+  getGamepadLayout(pad) {
+    const type = this.gamepadTypes.get(pad.index) ?? "auto";
+    return type === "auto" ? detectGamepadLayout(pad.id) : type;
   }
   setMuted(muted) {
     this.audioPlayer.setMuted(muted);
@@ -1301,19 +1317,23 @@ var VeilClient = class {
         tracked = { seq: 0, last: null, sentAt: 0 };
         this.gamepads.set(pad.index, tracked);
         this.emit("gamepadconnected", { index: pad.index, id: pad.id });
-        this.sendDatagram(new Uint8Array([INPUT_GAMEPAD_AVAILABLE, pad.index]));
+        const layout2 = GAMEPAD_LAYOUT_WIRE[this.getGamepadLayout(pad)];
+        this.sendDatagram(new Uint8Array([INPUT_GAMEPAD_AVAILABLE, pad.index, layout2]));
       }
       const snapshot = gamepadSnapshot(pad);
-      if (snapshot.key !== tracked.last || now - tracked.sentAt >= GAMEPAD_RESEND_INTERVAL) {
+      const layout = GAMEPAD_LAYOUT_WIRE[this.getGamepadLayout(pad)];
+      const key = `${snapshot.key}|${layout}`;
+      if (key !== tracked.last || now - tracked.sentAt >= GAMEPAD_RESEND_INTERVAL) {
         tracked.seq = tracked.seq + 1 >>> 0;
-        const buf = new Uint8Array(20);
+        const buf = new Uint8Array(21);
         const view = new DataView(buf.buffer);
         buf[0] = INPUT_GAMEPAD_STATE;
         buf[1] = pad.index;
         view.setUint32(2, tracked.seq);
         buf.set(snapshot.bytes, 6);
+        buf[20] = layout;
         this.sendDatagram(buf);
-        tracked.last = snapshot.key;
+        tracked.last = key;
         tracked.sentAt = now;
       }
     }
@@ -1513,6 +1533,10 @@ function radialDeadzone(x, y, deadzone = GAMEPAD_DEADZONE) {
   if (magnitude <= deadzone) return [0, 0];
   const scaled = Math.min(1, (magnitude - deadzone) / (1 - deadzone));
   return [x / magnitude * scaled, y / magnitude * scaled];
+}
+var GAMEPAD_LAYOUT_WIRE = { xbox: 0, playstation: 1 };
+function detectGamepadLayout(id) {
+  return /vendor:\s*054c\b|^054c-|dualsense|dualshock|playstation/i.test(id) ? "playstation" : "xbox";
 }
 
 // app.ts
@@ -2055,6 +2079,21 @@ function parsePadId(id) {
   return { name: id, usb: "" };
 }
 var padCards = /* @__PURE__ */ new Map();
+function loadPadType(padId) {
+  try {
+    const v = localStorage.getItem(`veil.padType.${padId}`);
+    if (v === "xbox" || v === "playstation") return v;
+  } catch {
+  }
+  return "auto";
+}
+function savePadType(padId, type) {
+  try {
+    if (type === "auto") localStorage.removeItem(`veil.padType.${padId}`);
+    else localStorage.setItem(`veil.padType.${padId}`, type);
+  } catch {
+  }
+}
 function makeCard(pad) {
   const { name, usb } = parsePadId(pad.id);
   const root = document.createElement("div");
@@ -2066,7 +2105,15 @@ function makeCard(pad) {
       <span class="pad-rumble" title="The game is rumbling this pad">Rumble</span>
     </div>
     <div class="pad-row"><span class="k">Browser</span><span class="v" data-browser></span></div>
+    <div class="pad-row"><span class="k">Emulate</span>
+      <select data-type title="Which controller games see. Changing it replugs the pad.">
+        <option value="auto">Auto (${detectGamepadLayout(pad.id) === "playstation" ? "DualSense" : "Xbox 360"})</option>
+        <option value="xbox">Xbox 360</option>
+        <option value="playstation">DualSense</option>
+      </select>
+    </div>
     <div class="pad-row"><span class="k">Server</span><span class="v" data-server></span></div>
+    <div class="pad-row pad-notice" data-notice style="display:none"></div>
     <div class="pad-viz">
       <div class="stick" data-left><div class="knob"></div></div>
       <div class="stick" data-right><div class="knob"></div></div>
@@ -2090,12 +2137,21 @@ function makeCard(pad) {
     root,
     browser: q("[data-browser]"),
     server: q("[data-server]"),
+    type: q("[data-type]"),
+    notice: q("[data-notice]"),
     left: q("[data-left]"),
     right: q("[data-right]"),
     lt: q("[data-lt]"),
     rt: q("[data-rt]"),
     chips
   };
+  card.type.value = loadPadType(pad.id);
+  client?.setGamepadType(pad.index, card.type.value);
+  card.type.addEventListener("change", () => {
+    const type = card.type.value;
+    savePadType(pad.id, type);
+    client?.setGamepadType(pad.index, type);
+  });
   card.browser.textContent = [
     usb && `USB ${usb}`,
     standard ? "standard mapping" : "non-standard mapping (buttons may be mislabelled)",
@@ -2121,6 +2177,8 @@ function renderPadInfo() {
       card.server.className = "v pad-ok";
       card.server.textContent = `${s.emulates} at ${s.device ?? "unknown node"} \xB7 ${s.events.toLocaleString()} events` + (rate !== void 0 ? ` (${rate.toFixed(0)}/s)` : "");
     }
+    card.notice.textContent = connected && s?.notice || "";
+    card.notice.style.display = card.notice.textContent ? "" : "none";
   }
   const failed = [...padStatus.values()].filter((s) => s.error).length;
   padNote.textContent = [
@@ -2455,6 +2513,7 @@ async function connect() {
     debug: false
   });
   client = c;
+  for (const [index, card] of padCards) c.setGamepadType(index, card.type.value);
   c.on("statechange", (state) => {
     if (client !== c) return;
     setStatus(state);

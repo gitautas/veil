@@ -369,7 +369,7 @@ fn is_user_input(msg: &ControlMessage) -> bool {
 /// virtual device. Returns the browser's index for gamepad messages.
 fn scope_pad_id(msg: &mut ControlMessage, viewer: u32) -> Option<u8> {
     let id = match msg {
-        ControlMessage::GamepadAvailable(id)
+        ControlMessage::GamepadAvailable(id, _)
         | ControlMessage::GamepadUnavailable(id)
         | ControlMessage::GamepadAxis { id, .. }
         | ControlMessage::GamepadTrigger { id, .. }

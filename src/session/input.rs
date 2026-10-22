@@ -1,10 +1,12 @@
-//! Virtual input device management using Linux uinput.
+//! Virtual gamepads.
 //!
-//! Each client gamepad becomes a virtual Xbox 360 wired controller that
-//! matches what the kernel's xpad driver exposes for a real one (045e:028e):
-//! the same buttons, axes, ranges and force feedback. Steam, SDL and games
-//! then treat it exactly like the real thing, including their built-in
-//! mappings, which are index-based and break on any extra button or axis.
+//! Each client gamepad becomes either a virtual Xbox 360 wired controller
+//! (through uinput) that matches what the kernel's xpad driver exposes for a
+//! real one (045e:028e): the same buttons, axes, ranges and force feedback;
+//! or a DualSense (through uhid, see `dualsense.rs`) that the kernel's own
+//! driver binds to. Steam, SDL and games then treat it exactly like the real
+//! thing, including their built-in mappings, which are index-based and break
+//! on any extra button or axis.
 
 use std::collections::HashMap;
 use std::fs::OpenOptions;
@@ -21,15 +23,29 @@ use input_linux::sys;
 
 use super::compositor::ButtonState;
 use super::control::GamepadState;
+use super::dualsense::UhidDualSense;
 
 // ─── Gamepad layout ──────────────────────────────────────────────────────────
 
-/// A simulated gamepad layout.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+/// Which controller a virtual gamepad emulates.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum GamepadLayout {
-    /// A generic dual-stick layout (Xbox/DS style).
+    /// A wired Xbox 360 controller.
     #[default]
-    GenericDualStick,
+    Xbox360,
+    /// A Sony DualSense (PS5), for PlayStation pads.
+    DualSense,
+}
+
+impl GamepadLayout {
+    /// The wire value: 0 = Xbox 360, 1 = DualSense.
+    pub fn from_wire(b: u8) -> Self {
+        match b {
+            1 => Self::DualSense,
+            _ => Self::Xbox360,
+        }
+    }
 }
 
 // ─── What a real Xbox 360 pad looks like ─────────────────────────────────────
@@ -104,39 +120,49 @@ impl InputDeviceManager {
         Ok(Self)
     }
 
-    /// Create and plug a virtual gamepad.
+    /// Create and plug a virtual gamepad. A DualSense that can't be created
+    /// (usually because /dev/uhid isn't accessible) falls back to an Xbox pad.
     pub fn plug_gamepad(
         &mut self,
         id: u64,
-        _layout: GamepadLayout,
+        layout: GamepadLayout,
         permanent: bool,
     ) -> anyhow::Result<GamepadHandle> {
+        let mut notice = None;
+        if layout == GamepadLayout::DualSense {
+            match UhidDualSense::new(id) {
+                Ok(ds) => {
+                    return Ok(GamepadHandle::new(
+                        Some(VirtualPad::DualSense(ds)),
+                        layout,
+                        permanent,
+                        None,
+                        None,
+                    ));
+                }
+                Err(e) => {
+                    warn!(id, "failed to create virtual DualSense, using an Xbox pad: {e:#}");
+                    notice = Some(format!(
+                        "Emulating an Xbox pad instead of a DualSense: {}",
+                        describe_open_error(&e, "/dev/uhid"),
+                    ));
+                }
+            }
+        }
+
         let (inner, device, error) = match UInputGamepad::new(id) {
             Ok(gp) => {
                 let device = gp.handle.evdev_path().ok().map(|p| p.display().to_string());
-                (Some(gp), device, None)
+                (Some(VirtualPad::Xbox(gp)), device, None)
             }
             Err(e) => {
                 warn!(id, permanent, "failed to create virtual gamepad: {e:#}");
-                let mut error = format!("{e:#}");
-                if let Some(io) = e.downcast_ref::<std::io::Error>() {
-                    if io.kind() == std::io::ErrorKind::PermissionDenied {
-                        error = format!("{error}: /dev/uinput isn't writable by this user");
-                    }
-                }
-                (None, None, Some(error))
+                (None, None, Some(describe_open_error(&e, "/dev/uinput")))
             }
         };
-        Ok(GamepadHandle {
-            inner,
-            permanent,
-            device,
-            error,
-            events: 0,
-            last_seq: None,
-            state: GamepadState::default(),
-            rumbles: 0,
-        })
+        let mut handle = GamepadHandle::new(inner, layout, permanent, device, error);
+        handle.notice = notice;
+        Ok(handle)
     }
 }
 
@@ -151,9 +177,30 @@ pub struct Rumble {
     pub duration_ms: u16,
 }
 
+/// The device behind a gamepad handle.
+enum VirtualPad {
+    Xbox(UInputGamepad),
+    DualSense(UhidDualSense),
+}
+
+/// An error opening a device node, with a hint if it's a permissions problem.
+fn describe_open_error(e: &anyhow::Error, node: &str) -> String {
+    let denied = e
+        .chain()
+        .filter_map(|c| c.downcast_ref::<std::io::Error>())
+        .any(|io| io.kind() == std::io::ErrorKind::PermissionDenied);
+    if denied {
+        format!("{e:#}: {node} isn't writable by this user (see udev/61-veil.rules)")
+    } else {
+        format!("{e:#}")
+    }
+}
+
 /// Handle to a plugged virtual gamepad.
 pub struct GamepadHandle {
-    inner: Option<UInputGamepad>,
+    inner: Option<VirtualPad>,
+    /// The pad type the client asked for (even if it fell back).
+    pub layout: GamepadLayout,
     pub permanent: bool,
     /// The evdev node of the virtual device, e.g. `/dev/input/event23`.
     device: Option<String>,
@@ -167,19 +214,55 @@ pub struct GamepadHandle {
     state: GamepadState,
     /// Rumble requests forwarded, for diagnostics.
     rumbles: u64,
+    /// Why the device isn't the requested layout, if it isn't.
+    notice: Option<String>,
+    /// When we last looked for a DualSense's evdev node, which the driver
+    /// creates shortly after the device.
+    last_device_lookup: Option<std::time::Instant>,
 }
 
 impl GamepadHandle {
+    fn new(
+        inner: Option<VirtualPad>,
+        layout: GamepadLayout,
+        permanent: bool,
+        device: Option<String>,
+        error: Option<String>,
+    ) -> Self {
+        Self {
+            inner,
+            layout,
+            permanent,
+            device,
+            error,
+            events: 0,
+            last_seq: None,
+            state: GamepadState::default(),
+            rumbles: 0,
+            notice: None,
+            last_device_lookup: None,
+        }
+    }
+
     pub fn status(&self, id: u64) -> crate::session::control::GamepadStatus {
         let (viewer, index) = split_pad_id(id);
+        let (name, emulates) = match &self.inner {
+            Some(VirtualPad::DualSense(_)) => (
+                super::dualsense::DEVICE_NAME,
+                "DualSense (054c:0ce6), through the kernel's hid-playstation driver",
+            ),
+            _ => (DEVICE_NAME, "Xbox 360 Wired Controller (045e:028e), as the xpad driver exposes it"),
+        };
         crate::session::control::GamepadStatus {
             id,
             viewer,
             index,
-            name: DEVICE_NAME.to_owned(),
-            emulates: "Xbox 360 Wired Controller (045e:028e), as the xpad driver exposes it",
+            name: name.to_owned(),
+            layout: self.layout,
+            emulates,
             device: self.device.clone(),
             error: self.error.clone(),
+            notice: self.notice.clone(),
             events: self.events,
         }
     }
@@ -200,7 +283,14 @@ impl GamepadHandle {
         if old == new {
             return true;
         }
-        let Some(gp) = &mut self.inner else { return true };
+        let gp = match &mut self.inner {
+            Some(VirtualPad::Xbox(gp)) => gp,
+            Some(VirtualPad::DualSense(ds)) => {
+                ds.set_state(new);
+                return true;
+            }
+            None => return true,
+        };
 
         let mut events = Vec::with_capacity(8);
         for (i, key) in BUTTON_MAP.iter().enumerate() {
@@ -281,10 +371,27 @@ impl GamepadHandle {
     /// Handle force-feedback requests from games, returning rumble commands
     /// to forward to the client.
     pub(crate) fn poll_rumble(&mut self) -> Vec<Rumble> {
-        let Some(gp) = &mut self.inner else { return Vec::new() };
-        let out = gp.poll_ff();
+        let out = match &mut self.inner {
+            Some(VirtualPad::Xbox(gp)) => gp.poll_ff(),
+            Some(VirtualPad::DualSense(ds)) => ds.poll_rumble(),
+            None => Vec::new(),
+        };
         self.rumbles += out.len() as u64;
         out
+    }
+
+    /// Look for a DualSense's evdev node until it appears (at most once a
+    /// second). Returns true when it was just found.
+    pub(crate) fn find_device(&mut self) -> bool {
+        let Some(VirtualPad::DualSense(ds)) = &self.inner else { return false };
+        if self.device.is_some()
+            || self.last_device_lookup.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(1))
+        {
+            return false;
+        }
+        self.last_device_lookup = Some(std::time::Instant::now());
+        self.device = ds.evdev_path();
+        self.device.is_some()
     }
 }
 

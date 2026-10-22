@@ -259,6 +259,7 @@ pub fn encode_window_list(windows: &[crate::session::control::WindowInfo]) -> By
 // ─── Input datagram decoder ─────────────────────────────────────────────────
 
 use crate::session::compositor::{ButtonState, KeyState};
+use crate::session::GamepadLayout;
 use crate::session::control::ControlMessage;
 
 /// Parse a client input datagram into a `ControlMessage` for the reactor.
@@ -354,6 +355,7 @@ pub fn parse_input_datagram(data: &[u8]) -> Option<ControlMessage> {
                 state: if pressed { ButtonState::Pressed } else { ButtonState::Released },
             })
         }
+        // An optional 20th byte (after the index) is the pad type.
         INPUT_GAMEPAD_STATE => {
             if p.len() < 19 {
                 return None;
@@ -368,6 +370,7 @@ pub fn parse_input_datagram(data: &[u8]) -> Option<ControlMessage> {
                     right_trigger: p[10],
                     axes: [be16(11), be16(13), be16(15), be16(17)],
                 },
+                layout: p.get(19).copied().map(GamepadLayout::from_wire),
             })
         }
         INPUT_GAMEPAD_AXIS => {
@@ -389,7 +392,10 @@ pub fn parse_input_datagram(data: &[u8]) -> Option<ControlMessage> {
         }
         INPUT_GAMEPAD_AVAILABLE => {
             if p.is_empty() { return None; }
-            Some(ControlMessage::GamepadAvailable(p[0] as u64))
+            Some(ControlMessage::GamepadAvailable(
+                p[0] as u64,
+                p.get(1).copied().map(GamepadLayout::from_wire),
+            ))
         }
         INPUT_GAMEPAD_UNAVAILABLE => {
             if p.is_empty() { return None; }

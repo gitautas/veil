@@ -128,5 +128,5 @@ Client → server QUIC datagrams:
 - **RADV**: enable video encode/decode with `RADV_PERFTEST=video_encode,video_decode` (set automatically in code)
 - **Steam**: single-instance; `run.sh` shuts down existing Steam and clears stale pid/lock files before launch
 - **Browser**: Chrome only — Safari and Firefox lack WebTransport support
-- **evdev input**: user must be in the `input` group
+- **Gamepads**: user must be in the `input` group, with `udev/61-veil.rules` installed (uinput for Xbox 360 pads; uhid and hidraw for DualSense). PlayStation pads (Sony vendor 054c) are emulated as a DualSense that the kernel's `hid-playstation` driver binds to (`src/session/dualsense.rs`); everything else as an Xbox 360 pad. Without uhid access a DualSense falls back to Xbox. The pad type rides on `0x2C` (available) and `0x31` (snapshot) datagrams: 0 = Xbox 360, 1 = DualSense.
 - **Profiling**: `cargo run --features tracy --release -- ...`

@@ -6,7 +6,7 @@
  * Input:     QUIC datagrams (keyboard / mouse / gamepad)
  */
 
-export { VeilClient } from './VeilClient';
+export { VeilClient, detectGamepadLayout } from './VeilClient';
 export { VeilVideoDecoder } from './VideoDecoder';
 export { InputManager } from './InputManager';
 export { AudioPlayer } from './AudioPlayer';

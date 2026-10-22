@@ -27,6 +27,7 @@ import {
   CompositorState,
   ViewerList,
   VideoCodecName,
+  GamepadType,
 } from './types';
 import {
   DEFAULT_SERVER_URL,
@@ -133,6 +134,8 @@ export class VeilClient {
   // compare the current state against itself → no events ever sent.
   /** Per browser pad: snapshot sequence, last snapshot sent, and when. */
   private gamepads = new Map<number, { seq: number; last: string | null; sentAt: number }>();
+  /** Per browser pad: which controller to emulate, if not detected. */
+  private gamepadTypes = new Map<number, GamepadType>();
   /** Rumble that outlasts the browser's 5 s limit is replayed by this timer. */
   private rumbleTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private abortController: AbortController | null = null;
@@ -340,6 +343,22 @@ export class VeilClient {
 
   setVolume(volume: number): void {
     this.audioPlayer.setVolume(volume);
+  }
+
+  /**
+   * Choose which controller the server emulates for a pad: 'auto' (the
+   * default) emulates a DualSense for PlayStation pads and an Xbox 360 pad
+   * for everything else. Changing it replaces the virtual device.
+   */
+  setGamepadType(index: number, type: GamepadType): void {
+    if (type === 'auto') this.gamepadTypes.delete(index);
+    else this.gamepadTypes.set(index, type);
+  }
+
+  /** The controller the server is asked to emulate for a pad. */
+  getGamepadLayout(pad: Gamepad): 'xbox' | 'playstation' {
+    const type = this.gamepadTypes.get(pad.index) ?? 'auto';
+    return type === 'auto' ? detectGamepadLayout(pad.id) : type;
   }
 
   setMuted(muted: boolean): void {
@@ -1025,22 +1044,27 @@ export class VeilClient {
         this.emit('gamepadconnected', { index: pad.index, id: pad.id });
         // Tell the server to create the virtual device now, before any input,
         // so Steam has time to see it appear.
-        this.sendDatagram(new Uint8Array([INPUT_GAMEPAD_AVAILABLE, pad.index]));
+        const layout = GAMEPAD_LAYOUT_WIRE[this.getGamepadLayout(pad)];
+        this.sendDatagram(new Uint8Array([INPUT_GAMEPAD_AVAILABLE, pad.index, layout]));
       }
 
       // Send the whole state on every change, and again periodically, so a
-      // lost datagram can't leave a button held or a stick deflected.
+      // lost datagram can't leave a button held or a stick deflected. The
+      // pad type goes with it, for the same reason.
       const snapshot = gamepadSnapshot(pad);
-      if (snapshot.key !== tracked.last || now - tracked.sentAt >= GAMEPAD_RESEND_INTERVAL) {
+      const layout = GAMEPAD_LAYOUT_WIRE[this.getGamepadLayout(pad)];
+      const key = `${snapshot.key}|${layout}`;
+      if (key !== tracked.last || now - tracked.sentAt >= GAMEPAD_RESEND_INTERVAL) {
         tracked.seq = (tracked.seq + 1) >>> 0;
-        const buf = new Uint8Array(20);
+        const buf = new Uint8Array(21);
         const view = new DataView(buf.buffer);
         buf[0] = INPUT_GAMEPAD_STATE;
         buf[1] = pad.index;
         view.setUint32(2, tracked.seq);
         buf.set(snapshot.bytes, 6);
+        buf[20] = layout;
         this.sendDatagram(buf);
-        tracked.last = snapshot.key;
+        tracked.last = key;
         tracked.sentAt = now;
       }
     }
@@ -1300,4 +1324,16 @@ export function radialDeadzone(x: number, y: number, deadzone = GAMEPAD_DEADZONE
   if (magnitude <= deadzone) return [0, 0];
   const scaled = Math.min(1, (magnitude - deadzone) / (1 - deadzone));
   return [(x / magnitude) * scaled, (y / magnitude) * scaled];
+}
+
+/** The pad-type byte in gamepad messages. */
+const GAMEPAD_LAYOUT_WIRE = { xbox: 0, playstation: 1 } as const;
+
+/**
+ * Guess a pad's type from the browser's ID, e.g. Chrome's "DualSense Wireless
+ * Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)" or Firefox's
+ * "054c-0ce6-DualSense Wireless Controller". Sony's vendor ID is 054c.
+ */
+export function detectGamepadLayout(id: string): 'xbox' | 'playstation' {
+  return /vendor:\s*054c\b|^054c-|dualsense|dualshock|playstation/i.test(id) ? 'playstation' : 'xbox';
 }

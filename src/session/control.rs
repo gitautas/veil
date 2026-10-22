@@ -83,7 +83,8 @@ pub enum ControlMessage {
     },
     PointerAxis(f64, f64),
     PointerAxisDiscrete(f64, f64),
-    GamepadAvailable(u64),
+    /// A pad was plugged in; the layout is `None` from older clients.
+    GamepadAvailable(u64, Option<super::GamepadLayout>),
     GamepadUnavailable(u64),
     /// Switch keyboard focus to the window with the given ID.
     FocusWindow(u32),
@@ -108,6 +109,9 @@ pub enum ControlMessage {
         id: u64,
         seq: u32,
         state: GamepadState,
+        /// Which pad to emulate; `None` from older clients. A change
+        /// replaces the virtual device.
+        layout: Option<super::GamepadLayout>,
     },
     /// Latency ping — the u64 is the client-supplied timestamp to echo back.
     Ping(u64),
@@ -195,12 +199,17 @@ pub struct GamepadStatus {
     pub viewer: u32,
     pub index: u8,
     pub name: String,
+    /// The pad type the client asked for.
+    pub layout: super::GamepadLayout,
     /// What the virtual device presents itself as.
     pub emulates: &'static str,
     /// The virtual device's evdev node, if it was created.
     pub device: Option<String>,
     /// Why it couldn't be created, if it wasn't.
     pub error: Option<String>,
+    /// Why it isn't what the client asked for, if it isn't (e.g. a DualSense
+    /// that fell back to an Xbox pad).
+    pub notice: Option<String>,
     /// Input events received so far.
     pub events: u64,
 }
