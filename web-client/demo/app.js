@@ -197,7 +197,7 @@ var MOUSE_BUTTON_MAP = {
 };
 
 // ../sdk/src/VideoDecoder.ts
-var VeilVideoDecoder = class _VeilVideoDecoder {
+var VeilVideoDecoder = class {
   constructor(config) {
     this.decoder = null;
     this.initialized = false;
@@ -212,13 +212,13 @@ var VeilVideoDecoder = class _VeilVideoDecoder {
     this.bytesDecoded = 0;
     this.config = config;
   }
-  /** Initialize the underlying WebCodecs VideoDecoder. */
+  /**
+   * Initialize the underlying WebCodecs VideoDecoder. Rejects with the
+   * browser's own error if it has no WebCodecs or can't decode the codec.
+   */
   async initialize() {
-    if (!("VideoDecoder" in globalThis)) {
-      throw new Error("WebCodecs VideoDecoder is not supported in this browser.");
-    }
     const codecString = this.getCodecString(this.config.codec);
-    const support = await globalThis.VideoDecoder.isConfigSupported({
+    const support = await VideoDecoder.isConfigSupported({
       codec: codecString,
       codedWidth: this.config.width,
       codedHeight: this.config.height,
@@ -227,7 +227,7 @@ var VeilVideoDecoder = class _VeilVideoDecoder {
     if (!support.supported) {
       throw new Error(`Codec ${codecString} is not supported by this browser.`);
     }
-    this.decoder = new globalThis.VideoDecoder({
+    this.decoder = new VideoDecoder({
       output: (frame) => {
         this.framesDecoded++;
         try {
@@ -324,16 +324,11 @@ var VeilVideoDecoder = class _VeilVideoDecoder {
     return this.waitingForKeyframe;
   }
   // ─── Static helpers ──────────────────────────────────────────────────────
-  /** Returns true if the browser supports the WebCodecs VideoDecoder API. */
-  static isSupported() {
-    return "VideoDecoder" in globalThis;
-  }
-  /** Returns true if the given codec/resolution combination is supported. */
+  /** Returns true if the given codec/resolution combination can be decoded. */
   static async isCodecSupported(codec, width, height) {
-    if (!_VeilVideoDecoder.isSupported()) return false;
     try {
       const codecString = defaultCodecString(codec);
-      const result = await globalThis.VideoDecoder.isConfigSupported({
+      const result = await VideoDecoder.isConfigSupported({
         codec: codecString,
         codedWidth: width,
         codedHeight: height,
@@ -427,7 +422,7 @@ class VeilAudioProcessor extends AudioWorkletProcessor {
 }
 registerProcessor('veil-audio', VeilAudioProcessor);
 `;
-var AudioPlayer = class _AudioPlayer {
+var AudioPlayer = class {
   constructor() {
     this.ctx = null;
     this.node = null;
@@ -438,15 +433,21 @@ var AudioPlayer = class _AudioPlayer {
     this.decoded = 0;
     this.workletStats = { bufferedMs: 0, underruns: 0, trims: 0 };
   }
-  /** Whether `AudioDecoder` (WebCodecs audio) is available. */
-  static isSupported() {
-    return typeof AudioDecoder !== "undefined" && typeof AudioWorkletNode !== "undefined";
-  }
-  /** Start playback. Must be called from a user gesture the first time. */
+  /**
+   * Start playback. Must be called from a user gesture the first time.
+   * Rejects with the browser's own error if it lacks something playback needs
+   * (WebCodecs audio, AudioWorklet), and leaves the player off.
+   */
   async enable() {
-    if (!_AudioPlayer.isSupported()) {
-      throw new Error("This browser has no WebCodecs AudioDecoder");
+    try {
+      await this.start();
+    } catch (err) {
+      await this.disable().catch(() => {
+      });
+      throw err;
     }
+  }
+  async start() {
     if (!this.ctx) {
       const ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: "interactive" });
       const url = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: "text/javascript" }));
@@ -643,11 +644,6 @@ var VeilClient = class {
     if (this.state !== "disconnected" /* Disconnected */) {
       throw new Error("Already connected or connecting");
     }
-    if (typeof WebTransport === "undefined") {
-      throw new Error(
-        "WebTransport is not supported in this browser. Please use Chrome 97+ (desktop or Android). Safari and Firefox do not support WebTransport."
-      );
-    }
     this.canvas = canvas2;
     this.ctx2d = canvas2.getContext("2d");
     if (!this.ctx2d) throw new Error("Could not get 2D canvas context");
@@ -668,8 +664,13 @@ var VeilClient = class {
         ];
       }
       this.log("Opening WebTransport to", this.cfg.serverUrl);
-      this.transport = new WebTransport(this.cfg.serverUrl, wtOptions);
-      await this.transport.ready;
+      try {
+        this.transport = new WebTransport(this.cfg.serverUrl, wtOptions);
+        await this.transport.ready;
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(`WebTransport connection failed: ${reason}`);
+      }
       this.log("WebTransport connected");
       this.audioPlayer.reset();
       this.datagramWriter = this.transport.datagrams.writable.getWriter();
@@ -760,7 +761,6 @@ var VeilClient = class {
     const key = `${width}x${height}`;
     this.decodeProbedFor = key;
     const level = async (codec) => {
-      if (typeof VideoDecoder === "undefined") return "none";
       for (const [accel, result] of [["prefer-hardware", "hardware"], ["prefer-software", "software"]]) {
         try {
           const r = await VideoDecoder.isConfigSupported({
@@ -2362,11 +2362,14 @@ function saveVolume(v) {
   } catch {
   }
 }
+var soundError = null;
 async function enableSound() {
   try {
     await audioPlayer.enable();
+    soundError = null;
   } catch (err) {
-    toast(`Couldn't start sound: ${err instanceof Error ? err.message : err}`);
+    soundError = err instanceof Error ? err.message : String(err);
+    toast(`Couldn't start sound: ${soundError}`);
   }
   updateSoundUi();
 }
@@ -2376,12 +2379,8 @@ function updateSoundUi() {
   soundMute.style.display = on ? "" : "none";
   soundMute.textContent = soundMuted ? "Unmute" : "Mute";
   soundOverlay.style.display = !on && client?.getState() === "connected" /* Connected */ ? "block" : "none";
-  if (!AudioPlayer.isSupported()) {
-    soundEnable.disabled = true;
-    soundNote.textContent = "not supported in this browser";
-  } else {
-    soundNote.textContent = on ? soundMuted ? "muted" : "playing" : "off";
-  }
+  soundNote.textContent = on ? soundMuted ? "muted" : "playing" : soundError ? "failed to start" : "off";
+  soundNote.title = !on && soundError ? soundError : "";
 }
 function onAudioStats(stats) {
   const p = stats.audio.player;
@@ -2685,6 +2684,10 @@ async function connect() {
     console.error("[veil] connect failed:", err);
     if (client === c) client = null;
     setStatus("failed" /* Failed */);
+    const reason = err instanceof Error ? err.message : String(err);
+    overlayStatus.textContent = `Couldn't connect: ${reason}`;
+    connNote.textContent = reason;
+    connNote.title = reason;
     return false;
   }
 }

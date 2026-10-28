@@ -115,16 +115,21 @@ export class AudioPlayer {
   private decoded = 0;
   private workletStats = { bufferedMs: 0, underruns: 0, trims: 0 };
 
-  /** Whether `AudioDecoder` (WebCodecs audio) is available. */
-  static isSupported(): boolean {
-    return typeof AudioDecoder !== 'undefined' && typeof AudioWorkletNode !== 'undefined';
+  /**
+   * Start playback. Must be called from a user gesture the first time.
+   * Rejects with the browser's own error if it lacks something playback needs
+   * (WebCodecs audio, AudioWorklet), and leaves the player off.
+   */
+  async enable(): Promise<void> {
+    try {
+      await this.start();
+    } catch (err) {
+      await this.disable().catch(() => {});
+      throw err;
+    }
   }
 
-  /** Start playback. Must be called from a user gesture the first time. */
-  async enable(): Promise<void> {
-    if (!AudioPlayer.isSupported()) {
-      throw new Error('This browser has no WebCodecs AudioDecoder');
-    }
+  private async start(): Promise<void> {
     if (!this.ctx) {
       const ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
       const url = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: 'text/javascript' }));

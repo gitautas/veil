@@ -54,15 +54,14 @@ export class VeilVideoDecoder {
     this.config = config;
   }
 
-  /** Initialize the underlying WebCodecs VideoDecoder. */
+  /**
+   * Initialize the underlying WebCodecs VideoDecoder. Rejects with the
+   * browser's own error if it has no WebCodecs or can't decode the codec.
+   */
   async initialize(): Promise<void> {
-    if (!('VideoDecoder' in globalThis)) {
-      throw new Error('WebCodecs VideoDecoder is not supported in this browser.');
-    }
-
     const codecString = this.getCodecString(this.config.codec);
 
-    const support = await globalThis.VideoDecoder.isConfigSupported({
+    const support = await VideoDecoder.isConfigSupported({
       codec: codecString,
       codedWidth: this.config.width,
       codedHeight: this.config.height,
@@ -73,7 +72,7 @@ export class VeilVideoDecoder {
       throw new Error(`Codec ${codecString} is not supported by this browser.`);
     }
 
-    this.decoder = new globalThis.VideoDecoder({
+    this.decoder = new VideoDecoder({
       output: (frame: VideoFrame) => {
         this.framesDecoded++;
         try {
@@ -190,21 +189,15 @@ export class VeilVideoDecoder {
 
   // ─── Static helpers ──────────────────────────────────────────────────────
 
-  /** Returns true if the browser supports the WebCodecs VideoDecoder API. */
-  static isSupported(): boolean {
-    return 'VideoDecoder' in globalThis;
-  }
-
-  /** Returns true if the given codec/resolution combination is supported. */
+  /** Returns true if the given codec/resolution combination can be decoded. */
   static async isCodecSupported(
     codec: VideoCodecName,
     width: number,
     height: number
   ): Promise<boolean> {
-    if (!VeilVideoDecoder.isSupported()) return false;
     try {
       const codecString = defaultCodecString(codec);
-      const result = await globalThis.VideoDecoder.isConfigSupported({
+      const result = await VideoDecoder.isConfigSupported({
         codec: codecString,
         codedWidth: width,
         codedHeight: height,

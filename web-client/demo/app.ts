@@ -867,11 +867,16 @@ function saveVolume(v: number) {
   try { localStorage.setItem('veil.volume', String(v)); } catch { /* storage unavailable */ }
 }
 
+/** Why sound last failed to start, if it did (e.g. the browser lacks WebCodecs audio). */
+let soundError: string | null = null;
+
 async function enableSound() {
   try {
     await audioPlayer.enable();
+    soundError = null;
   } catch (err) {
-    toast(`Couldn't start sound: ${err instanceof Error ? err.message : err}`);
+    soundError = err instanceof Error ? err.message : String(err);
+    toast(`Couldn't start sound: ${soundError}`);
   }
   updateSoundUi();
 }
@@ -883,12 +888,8 @@ function updateSoundUi() {
   soundMute.textContent = soundMuted ? 'Unmute' : 'Mute';
   // The stylesheet hides it by default, so show it explicitly.
   soundOverlay.style.display = !on && client?.getState() === ConnectionState.Connected ? 'block' : 'none';
-  if (!AudioPlayer.isSupported()) {
-    soundEnable.disabled = true;
-    soundNote.textContent = 'not supported in this browser';
-  } else {
-    soundNote.textContent = on ? (soundMuted ? 'muted' : 'playing') : 'off';
-  }
+  soundNote.textContent = on ? (soundMuted ? 'muted' : 'playing') : soundError ? 'failed to start' : 'off';
+  soundNote.title = !on && soundError ? soundError : '';
 }
 
 function onAudioStats(stats: ConnectionStats) {
@@ -1248,6 +1249,11 @@ async function connect(): Promise<boolean> {
     console.error('[veil] connect failed:', err);
     if (client === c) client = null;
     setStatus(ConnectionState.Failed);
+    // Show the browser's own reason (e.g. no WebTransport, handshake failed).
+    const reason = err instanceof Error ? err.message : String(err);
+    overlayStatus.textContent = `Couldn't connect: ${reason}`;
+    connNote.textContent = reason;
+    connNote.title = reason;
     return false;
   }
 }

@@ -224,14 +224,6 @@ export class VeilClient {
       throw new Error('Already connected or connecting');
     }
 
-    if (typeof WebTransport === 'undefined') {
-      throw new Error(
-        'WebTransport is not supported in this browser. ' +
-        'Please use Chrome 97+ (desktop or Android). ' +
-        'Safari and Firefox do not support WebTransport.'
-      );
-    }
-
     this.canvas = canvas;
     this.ctx2d = canvas.getContext('2d');
     if (!this.ctx2d) throw new Error('Could not get 2D canvas context');
@@ -268,8 +260,15 @@ export class VeilClient {
       }
 
       this.log('Opening WebTransport to', this.cfg.serverUrl);
-      this.transport = new WebTransport(this.cfg.serverUrl, wtOptions);
-      await this.transport.ready;
+      try {
+        this.transport = new WebTransport(this.cfg.serverUrl, wtOptions);
+        await this.transport.ready;
+      } catch (err) {
+        // The browser's own reason, e.g. "WebTransport is not defined" where
+        // it has no WebTransport, or a handshake failure.
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(`WebTransport connection failed: ${reason}`);
+      }
       this.log('WebTransport connected');
       // A shared player may still hold audio from the previous connection.
       this.audioPlayer.reset();
@@ -384,7 +383,6 @@ export class VeilClient {
     const key = `${width}x${height}`;
     this.decodeProbedFor = key;
     const level = async (codec: string): Promise<DecodeLevel> => {
-      if (typeof VideoDecoder === 'undefined') return 'none';
       for (const [accel, result] of [['prefer-hardware', 'hardware'], ['prefer-software', 'software']] as const) {
         try {
           const r = await VideoDecoder.isConfigSupported({
