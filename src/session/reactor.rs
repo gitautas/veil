@@ -235,11 +235,13 @@ impl Reactor {
 
         // Set the wayland socket and X11 sockets.
         //
-        // Because the socket lives in the host's XDG_RUNTIME_DIR we can now
-        // pass the *relative* socket name.  libwayland-client will look it up
-        // as $XDG_RUNTIME_DIR/<name>, and since Steam resets XDG_RUNTIME_DIR
-        // to /run/user/<uid> (the same dir our socket is in), the lookup works.
-        runtime.set_env("WAYLAND_DISPLAY", &socket_name);
+        // Pass the socket's absolute path: libwayland-client accepts one in
+        // WAYLAND_DISPLAY, whereas a bare name is looked up in
+        // $XDG_RUNTIME_DIR, which is our private run dir for the app (and may
+        // be reset by launchers like Steam). With a bare name, native Wayland
+        // clients (kitty, Chromium) couldn't connect at all; X11 ones fell
+        // back to Xwayland and didn't notice.
+        runtime.set_env("WAYLAND_DISPLAY", &socket_path);
 
         // Hint toolkits (SDL, GTK, Qt) that this is a Wayland session.
         runtime.set_env("XDG_SESSION_TYPE", "wayland");

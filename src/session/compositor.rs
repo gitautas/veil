@@ -42,6 +42,8 @@ mod serial;
 mod shm;
 mod stack;
 pub mod surface;
+
+use surface::{SurfaceKey, SurfaceRole};
 pub mod xwayland;
 
 pub use seat::{ButtonState, KeyState};
@@ -219,15 +221,18 @@ impl Compositor {
             })
             .unwrap_or_default();
 
-        let num_surfaces = self.surface_stack.len() - first_visible_idx;
-        let mut presentation_feedback = Vec::with_capacity(num_surfaces);
-
+        // Each window, with its subsurfaces, bottom to top.
+        let mut draws = Vec::new();
         for id in self.surface_stack[first_visible_idx..].iter() {
-            let surface = &mut self.surfaces[*id];
-
-            let conf = surface
+            let conf = self.surfaces[*id]
                 .configuration
                 .expect("mapped surface has no configuration");
+            self.collect_draws(*id, conf.topleft.as_dvec2(), conf.size.as_dvec2(), 0, &mut draws);
+        }
+        let mut presentation_feedback = Vec::with_capacity(draws.len());
+
+        for (id, pos, size) in draws {
+            let surface = &mut self.surfaces[id];
 
             let content = surface
                 .content
@@ -247,7 +252,7 @@ impl Compositor {
                 _ => None,
             };
 
-            unsafe { content.tp_done = video_pipeline.composite_surface(buffer, sync, conf)? };
+            unsafe { content.tp_done = video_pipeline.composite_surface(buffer, sync, pos, size)? };
             if let Some(callback) = surface.frame_callback.current.take().as_mut() {
                 callback.done(now);
             }
@@ -256,7 +261,7 @@ impl Compositor {
                 presentation_feedback.push(fb);
             }
 
-            trace!(?surface, ?conf, "compositing surface");
+            trace!(?surface, ?pos, ?size, "compositing surface");
         }
 
         trace!(
@@ -362,10 +367,49 @@ impl wayland_server::backend::ClientData for ClientState {
     }
 }
 
+impl Compositor {
+    /// Add `id` and its subsurfaces, in stacking order, to `out` as
+    /// (surface, position, size) in output pixels. `pos` and `size` are where
+    /// `id` itself goes; subsurfaces are scaled the same way as their parent.
+    fn collect_draws(
+        &self,
+        id: SurfaceKey,
+        pos: glam::DVec2,
+        size: glam::DVec2,
+        depth: u32,
+        out: &mut Vec<(SurfaceKey, glam::IVec2, glam::UVec2)>,
+    ) {
+        let Some(surface) = self.surfaces.get(id) else { return };
+        // Output pixels per surface (logical) unit.
+        let Some(logical) = surface.logical_size() else { return };
+        let factor = size / logical.max(glam::DVec2::ONE);
+
+        for &key in &surface.stack {
+            if key == id {
+                out.push((id, pos.round().as_ivec2(), size.round().as_uvec2()));
+                continue;
+            }
+            let Some(child) = self.surfaces.get(key) else { continue };
+            let is_child = matches!(child.role.current, Some(SurfaceRole::Subsurface { parent }) if parent == id);
+            // Deep trees are almost certainly a bug; don't recurse forever.
+            if !is_child || depth >= 16 {
+                continue;
+            }
+            let Some(child_logical) = child.logical_size() else { continue };
+            let child_pos = pos + child.subsurface_position.as_dvec2() * factor;
+            self.collect_draws(key, child_pos, child_logical * factor, depth + 1, out);
+        }
+    }
+}
+
 pub fn create_globals(dh: &wayland_server::DisplayHandle) {
     create_global::<protocol::wl_compositor::WlCompositor>(dh, 6);
+    create_global::<protocol::wl_subcompositor::WlSubcompositor>(dh, 1);
     create_global::<protocol::wl_output::WlOutput>(dh, 4);
     create_global::<xdg_wm_base::XdgWmBase>(dh, 6);
+    create_global::<
+        wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+    >(dh, 1);
     create_global::<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>(dh, 1);
 
     create_global::<protocol::wl_seat::WlSeat>(dh, 9);

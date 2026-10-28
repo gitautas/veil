@@ -39,7 +39,7 @@ impl wayland_server::Dispatch<wl_compositor::WlCompositor, ()> for Compositor {
             wl_compositor::Request::CreateSurface { id } => {
                 state
                     .surfaces
-                    .insert_with_key(|k| Surface::new(data_init.init(id, k)));
+                    .insert_with_key(|k| Surface::new(k, data_init.init(id, k)));
             }
             wl_compositor::Request::CreateRegion { id } => {
                 // We don't do anything with regions.
@@ -119,7 +119,8 @@ impl wayland_server::Dispatch<wl_surface::WlSurface, SurfaceKey> for Compositor 
             // We ignore damage and don't do any related optimizations.
             wl_surface::Request::DamageBuffer { .. } => (),
             wl_surface::Request::Damage { .. } => (),
-            // We ignore input and opaque regions, because we don't support subcompositing.
+            // We ignore input and opaque regions: input goes to the window
+            // (see `surface_under`), and we always blend.
             wl_surface::Request::SetOpaqueRegion { .. } => (),
             wl_surface::Request::SetInputRegion { .. } => (),
             wl_surface::Request::Destroy => (),

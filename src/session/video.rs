@@ -272,7 +272,9 @@ impl EncodePipeline {
         &mut self,
         texture: &compositor::buffers::Buffer,
         sync: Option<TextureSync>,
-        dest: compositor::surface::SurfaceConfiguration,
+        // Where to draw it, in output pixels. Off-screen parts are clipped.
+        dest_pos: glam::IVec2,
+        dest_size: glam::UVec2,
     ) -> anyhow::Result<Option<VkTimelinePoint>> {
         let device = &self.vk.device;
         let frame = &mut self.swap[self.swap_idx];
@@ -404,8 +406,8 @@ impl EncodePipeline {
         // Convert the destination rect into clip coordinates.
         let display_size: glam::UVec2 =
             (self.display_params.width, self.display_params.height).into();
-        let dst_pos = (dest.topleft.as_vec2() / display_size.as_vec2() * 2.0) - 1.0;
-        let dst_size = dest.size.as_vec2() / display_size.as_vec2() * 2.0;
+        let dst_pos = (dest_pos.as_vec2() / display_size.as_vec2() * 2.0) - 1.0;
+        let dst_size = dest_size.as_vec2() / display_size.as_vec2() * 2.0;
 
         // Draw.
         frame.draws.push((view, dst_pos, dst_size));

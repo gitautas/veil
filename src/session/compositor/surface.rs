@@ -48,12 +48,22 @@ pub struct Surface {
     pub title: Option<String>,
     pub app_id: Option<String>,
 
+    /// Drawing order of this surface and its subsurfaces, bottom first. The
+    /// surface itself is in the list too, since subsurfaces can be placed
+    /// below their parent. Changes (`pending_stack`) apply on commit.
+    pub stack: Vec<SurfaceKey>,
+    pub pending_stack: Option<Vec<SurfaceKey>>,
+    /// For a subsurface, its position relative to the parent, in the parent's
+    /// surface coordinates. A new position applies when the parent commits.
+    pub subsurface_position: glam::IVec2,
+    pub pending_subsurface_position: Option<glam::IVec2>,
+
     /// Buffer commits, for diagnostics.
     pub commits: u64,
 }
 
 impl Surface {
-    pub fn new(wl_surface: wl_surface::WlSurface) -> Self {
+    pub fn new(key: SurfaceKey, wl_surface: wl_surface::WlSurface) -> Self {
         Self {
             wl_surface,
             wp_fractional_scale: None,
@@ -75,8 +85,20 @@ impl Surface {
 
             title: None,
             app_id: None,
+
+            stack: vec![key],
+            pending_stack: None,
+            subsurface_position: glam::IVec2::ZERO,
+            pending_subsurface_position: None,
+
             commits: 0,
         }
+    }
+
+    /// The surface's size in its own (logical) coordinates, if it has content.
+    pub fn logical_size(&self) -> Option<glam::DVec2> {
+        let content = self.content.as_ref()?;
+        Some(buffer_vector_to_surface(content.dimensions.as_dvec2(), self.effective_scale()))
     }
 
     pub fn reconfigure(&mut self, params: DisplayParams, xwin: Option<&xwayland::XWindow>) {
@@ -86,7 +108,8 @@ impl Surface {
             .map_or(Visibility::Visible, |c| c.visibility);
 
         let conf = match self.role.current {
-            None | Some(SurfaceRole::Cursor) => None,
+            // Subsurfaces are placed relative to their parent when drawn.
+            None | Some(SurfaceRole::Cursor) | Some(SurfaceRole::Subsurface { .. }) => None,
             Some(SurfaceRole::XdgToplevel { .. }) => Some(SurfaceConfiguration {
                 topleft: glam::UVec2::ZERO,
                 size: (params.width, params.height).into(),
@@ -183,6 +206,11 @@ impl std::fmt::Debug for Surface {
                 ("xdg_toplevel", xdg_toplevel.id().protocol_id() as u64, "")
             }
             Some(SurfaceRole::XWayland { serial }) => ("xwayland", *serial, ""),
+            Some(SurfaceRole::Subsurface { .. }) => (
+                "wl_subsurface",
+                self.wl_surface.id().protocol_id() as u64,
+                "",
+            ),
         };
 
         write!(f, "<{:?} {}@{}{}>", name, role, id, extra)?;
@@ -244,6 +272,10 @@ pub enum SurfaceRole {
         serial: u64,
     },
     Cursor,
+    /// Drawn with its parent (see `Surface::stack`), never on its own.
+    Subsurface {
+        parent: SurfaceKey,
+    },
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -447,11 +479,26 @@ impl Compositor {
         surface.buffer_scale.promote();
         surface.frame_callback.promote();
 
+        // Subsurface stacking and positions are part of the parent's state.
+        if let Some(stack) = surface.pending_stack.take() {
+            surface.stack = stack;
+        }
+        let children = surface.stack.clone();
+        for child in children.into_iter().filter(|child| *child != id) {
+            if let Some(child) = self.surfaces.get_mut(child) {
+                if let Some(pos) = child.pending_subsurface_position.take() {
+                    child.subsurface_position = pos;
+                }
+            }
+        }
+        let surface = &mut self.surfaces[id];
+
         trace!(?surface, "surface commit");
 
         // Map the surface, if we've fulfilled all requirements.
         let is_mappable = match surface.role.current {
-            None | Some(SurfaceRole::Cursor) => false,
+            // Subsurfaces are drawn with their parent rather than mapped.
+            None | Some(SurfaceRole::Cursor) | Some(SurfaceRole::Subsurface { .. }) => false,
             Some(SurfaceRole::XdgToplevel { .. }) => {
                 let ready = surface.pending_configure.is_none() && surface.content.is_some();
                 if !ready {
@@ -493,10 +540,27 @@ impl Compositor {
     /// Cleans up for a surface destroyed by the client.
     pub fn surface_destroyed(&mut self, id: SurfaceKey) {
         self.unmap_surface(id);
+        self.detach_subsurface(id);
 
         let surf = self.surfaces.remove(id);
         if let Some(SurfaceRole::XWayland { serial }) = surf.and_then(|s| s.role.current) {
             self.xwayland_surface_lookup.remove(&serial);
+        }
+    }
+
+    /// Takes a subsurface out of its parent's stack (it's no longer drawn).
+    pub fn detach_subsurface(&mut self, id: SurfaceKey) {
+        let Some(Surface { role, .. }) = self.surfaces.get(id) else { return };
+        let Some(SurfaceRole::Subsurface { parent }) = role.current else { return };
+        if let Some(parent) = self.surfaces.get_mut(parent) {
+            parent.stack.retain(|k| *k != id);
+            if let Some(pending) = parent.pending_stack.as_mut() {
+                pending.retain(|k| *k != id);
+            }
+        }
+        if let Some(surface) = self.surfaces.get_mut(id) {
+            surface.role.current = None;
+            surface.pending_subsurface_position = None;
         }
     }
 
@@ -609,7 +673,8 @@ impl Compositor {
 
                     surface.sent_configuration = Some(conf);
                 }
-                Some(SurfaceRole::Cursor) => unreachable!(),
+                // Neither ever has a configuration.
+                Some(SurfaceRole::Cursor) | Some(SurfaceRole::Subsurface { .. }) => unreachable!(),
             }
         }
 

@@ -132,6 +132,7 @@ Client → server QUIC datagrams:
 ## Gotchas
 
 - **AV1** (experimental): needs `VK_KHR_video_encode_av1` (the RX 7600 has it, the GTX 1660 doesn't; unsupported codecs fall back to H.264). Flat P structure, no temporal layers. RADV pads frames (1080 → 1088 rows), and Chrome ignores the AV1 render size, so the client crops to the stream size. Chrome here decodes AV1 in software, which can't hold 1080p60.
+- **Wayland clients**: the compositor is hand-written (`src/session/compositor/dispatch/`), one module per protocol. Apps get `WAYLAND_DISPLAY` as an absolute socket path (their `XDG_RUNTIME_DIR` is Veil's private run dir). Subsurfaces are supported (all treated as desynchronized; input goes to the window), decorations are always "server-side" (none drawn), and xdg popups aren't supported yet (dismissed immediately, so app menus don't open). X11-capable apps hide gaps here by falling back to Xwayland.
 - **RADV**: enable video encode/decode with `RADV_PERFTEST=video_encode,video_decode` (set automatically in code)
 - **Steam**: single-instance; `run.sh` shuts down existing Steam and clears stale pid/lock files before launch
 - **Browser**: Chrome only — Safari and Firefox lack WebTransport support

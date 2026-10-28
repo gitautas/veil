@@ -74,7 +74,8 @@ impl Compositor {
                     ("x11", xwm.and_then(|xwm| xwm.xwindow_for_serial(*serial)))
                 }
                 Some(SurfaceRole::Cursor) => ("cursor", None),
-                None => {
+                // Part of a window, drawn with it.
+                Some(SurfaceRole::Subsurface { .. }) | None => {
                     other_surfaces += 1;
                     continue;
                 }
