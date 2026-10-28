@@ -201,6 +201,11 @@ export class VeilClient {
   /** Swallow the mouseup of the click that captured the mouse. */
   private suppressMouseUp = -1;
   private onPointerLockChange: (() => void) | null = null;
+  /** Keys and mouse buttons the server thinks are down (scancode; button → position). */
+  private heldKeys = new Set<number>();
+  private heldButtons = new Map<number, { x: number; y: number }>();
+  /** Releases held input when the page loses focus (see `releaseHeldInput`). */
+  private onFocusLost: (() => void) | null = null;
   /** Codec, size and codec string the decoder was configured with. */
   private decoderConfigKey = '';
   private decodeLatencyMs = 0;
@@ -975,11 +980,11 @@ export class VeilClient {
 
   /**
    * Show `element` (the canvas by default; pass a wrapper to keep overlays)
-   * fullscreen, and ask the browser to pass Escape to the page (Keyboard
-   * Lock), so Esc reaches the app instead of releasing the mouse; holding Esc
-   * still leaves fullscreen. Must be called from a user gesture. Resolves to
-   * whether Escape was locked: browsers without Keyboard Lock still release
-   * on Esc.
+   * fullscreen, and lock the keyboard (Keyboard Lock): every key, including
+   * Esc and system shortcuts the OS lets the browser take (Alt+Tab, the
+   * Windows key...), goes to the app; holding Esc still leaves fullscreen.
+   * Must be called from a user gesture. Resolves to whether the keyboard was
+   * locked: browsers without Keyboard Lock still release the mouse on Esc.
    */
   async enterFullscreen(element: HTMLElement | null = this.canvas): Promise<boolean> {
     if (!element) throw new Error('No element to show fullscreen');
@@ -988,10 +993,10 @@ export class VeilClient {
     }
     try {
       await (navigator as Navigator & { keyboard: { lock(keys?: string[]): Promise<void> } })
-        .keyboard.lock(['Escape']);
+        .keyboard.lock();
       this.escapeLocked = true;
     } catch (err) {
-      this.log('Escape not locked; Esc will release the mouse:', err instanceof Error ? err.message : err);
+      this.log('Keyboard not locked; Esc will release the mouse:', err instanceof Error ? err.message : err);
       this.escapeLocked = false;
     }
     return this.escapeLocked;
@@ -1088,6 +1093,14 @@ export class VeilClient {
       };
       document.addEventListener('pointerlockchange', this.onPointerLockChange);
     }
+
+    // Key-ups and mouse-ups never arrive once the page loses focus (Alt/Cmd+Tab,
+    // leaving fullscreen by holding Esc...), which would leave keys held on
+    // the server: e.g. a stuck Super makes every later key a shortcut.
+    this.onFocusLost = () => this.releaseHeldInput();
+    window.addEventListener('blur', this.onFocusLost);
+    document.addEventListener('visibilitychange', this.onFocusLost);
+    document.addEventListener('fullscreenchange', this.onFocusLost);
     if (this.cfg.captureGamepad) {
       this.gamepadInterval = setInterval(() => this.pollGamepads(), GAMEPAD_POLL_INTERVAL);
     }
@@ -1101,10 +1114,35 @@ export class VeilClient {
     this.sendDatagram(new Uint8Array([INPUT_POINTER_LEAVE]));
   }
 
+  /** Release every key and mouse button the server thinks is held. */
+  private releaseHeldInput(): void {
+    for (const keycode of this.heldKeys) {
+      const buf = new Uint8Array(5);
+      buf[0] = INPUT_KEY_UP;
+      new DataView(buf.buffer).setUint32(1, keycode, false);
+      this.sendDatagram(buf);
+    }
+    for (const [btn, { x, y }] of this.heldButtons) {
+      const buf = new Uint8Array(13);
+      const view = new DataView(buf.buffer);
+      buf[0] = INPUT_MOUSE_UP;
+      view.setUint32(1, btn, false);
+      view.setFloat32(5, x, false);
+      view.setFloat32(9, y, false);
+      this.sendDatagram(buf);
+    }
+    if (this.heldKeys.size || this.heldButtons.size) {
+      this.log(`Released ${this.heldKeys.size} key(s) and ${this.heldButtons.size} button(s) after losing focus`);
+    }
+    this.heldKeys.clear();
+    this.heldButtons.clear();
+  }
+
   private onKeyDown(e: KeyboardEvent): void {
     e.preventDefault();
     const keycode = SCAN_CODE_MAP[e.code] ?? 0;
     if (keycode === 0) return; // unknown physical key — drop it
+    this.heldKeys.add(keycode);
     const char = e.key.length === 1 ? e.key.codePointAt(0) ?? 0 : 0;
     const buf = new Uint8Array(9);
     const view = new DataView(buf.buffer);
@@ -1118,6 +1156,7 @@ export class VeilClient {
     e.preventDefault();
     const keycode = SCAN_CODE_MAP[e.code] ?? 0;
     if (keycode === 0) return;
+    this.heldKeys.delete(keycode);
     const buf = new Uint8Array(5);
     const view = new DataView(buf.buffer);
     buf[0] = INPUT_KEY_UP;
@@ -1135,6 +1174,7 @@ export class VeilClient {
     }
     const { x, y } = this.streamCoords(e);
     const btn = MOUSE_BUTTON_MAP[e.button] ?? e.button;
+    this.heldButtons.set(btn, { x, y });
     const buf = new Uint8Array(13); // type:1 + button:4 + x:4 + y:4
     const view = new DataView(buf.buffer);
     buf[0] = INPUT_MOUSE_DOWN;
@@ -1152,6 +1192,7 @@ export class VeilClient {
     }
     const { x, y } = this.streamCoords(e);
     const btn = MOUSE_BUTTON_MAP[e.button] ?? e.button;
+    this.heldButtons.delete(btn);
     const buf = new Uint8Array(13);
     const view = new DataView(buf.buffer);
     buf[0] = INPUT_MOUSE_UP;
@@ -1401,6 +1442,14 @@ export class VeilClient {
 
   private cleanup(): void {
     this.releaseMouse();
+    if (this.onFocusLost) {
+      window.removeEventListener('blur', this.onFocusLost);
+      document.removeEventListener('visibilitychange', this.onFocusLost);
+      document.removeEventListener('fullscreenchange', this.onFocusLost);
+      this.onFocusLost = null;
+    }
+    this.heldKeys.clear();
+    this.heldButtons.clear();
     if (this.onPointerLockChange) {
       document.removeEventListener('pointerlockchange', this.onPointerLockChange);
       this.onPointerLockChange = null;

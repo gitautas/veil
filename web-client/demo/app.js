@@ -870,6 +870,11 @@ var VeilClient = class {
     /** Swallow the mouseup of the click that captured the mouse. */
     this.suppressMouseUp = -1;
     this.onPointerLockChange = null;
+    /** Keys and mouse buttons the server thinks are down (scancode; button → position). */
+    this.heldKeys = /* @__PURE__ */ new Set();
+    this.heldButtons = /* @__PURE__ */ new Map();
+    /** Releases held input when the page loses focus (see `releaseHeldInput`). */
+    this.onFocusLost = null;
     /** Codec, size and codec string the decoder was configured with. */
     this.decoderConfigKey = "";
     this.decodeLatencyMs = 0;
@@ -1515,11 +1520,11 @@ var VeilClient = class {
   }
   /**
    * Show `element` (the canvas by default; pass a wrapper to keep overlays)
-   * fullscreen, and ask the browser to pass Escape to the page (Keyboard
-   * Lock), so Esc reaches the app instead of releasing the mouse; holding Esc
-   * still leaves fullscreen. Must be called from a user gesture. Resolves to
-   * whether Escape was locked: browsers without Keyboard Lock still release
-   * on Esc.
+   * fullscreen, and lock the keyboard (Keyboard Lock): every key, including
+   * Esc and system shortcuts the OS lets the browser take (Alt+Tab, the
+   * Windows key...), goes to the app; holding Esc still leaves fullscreen.
+   * Must be called from a user gesture. Resolves to whether the keyboard was
+   * locked: browsers without Keyboard Lock still release the mouse on Esc.
    */
   async enterFullscreen(element = this.canvas) {
     if (!element) throw new Error("No element to show fullscreen");
@@ -1527,10 +1532,10 @@ var VeilClient = class {
       await element.requestFullscreen({ navigationUI: "hide" });
     }
     try {
-      await navigator.keyboard.lock(["Escape"]);
+      await navigator.keyboard.lock();
       this.escapeLocked = true;
     } catch (err) {
-      this.log("Escape not locked; Esc will release the mouse:", err instanceof Error ? err.message : err);
+      this.log("Keyboard not locked; Esc will release the mouse:", err instanceof Error ? err.message : err);
       this.escapeLocked = false;
     }
     return this.escapeLocked;
@@ -1613,6 +1618,10 @@ var VeilClient = class {
       };
       document.addEventListener("pointerlockchange", this.onPointerLockChange);
     }
+    this.onFocusLost = () => this.releaseHeldInput();
+    window.addEventListener("blur", this.onFocusLost);
+    document.addEventListener("visibilitychange", this.onFocusLost);
+    document.addEventListener("fullscreenchange", this.onFocusLost);
     if (this.cfg.captureGamepad) {
       this.gamepadInterval = setInterval(() => this.pollGamepads(), GAMEPAD_POLL_INTERVAL);
     }
@@ -1623,10 +1632,34 @@ var VeilClient = class {
   onPointerLeave() {
     this.sendDatagram(new Uint8Array([INPUT_POINTER_LEAVE]));
   }
+  /** Release every key and mouse button the server thinks is held. */
+  releaseHeldInput() {
+    for (const keycode of this.heldKeys) {
+      const buf = new Uint8Array(5);
+      buf[0] = INPUT_KEY_UP;
+      new DataView(buf.buffer).setUint32(1, keycode, false);
+      this.sendDatagram(buf);
+    }
+    for (const [btn, { x, y }] of this.heldButtons) {
+      const buf = new Uint8Array(13);
+      const view = new DataView(buf.buffer);
+      buf[0] = INPUT_MOUSE_UP;
+      view.setUint32(1, btn, false);
+      view.setFloat32(5, x, false);
+      view.setFloat32(9, y, false);
+      this.sendDatagram(buf);
+    }
+    if (this.heldKeys.size || this.heldButtons.size) {
+      this.log(`Released ${this.heldKeys.size} key(s) and ${this.heldButtons.size} button(s) after losing focus`);
+    }
+    this.heldKeys.clear();
+    this.heldButtons.clear();
+  }
   onKeyDown(e) {
     e.preventDefault();
     const keycode = SCAN_CODE_MAP[e.code] ?? 0;
     if (keycode === 0) return;
+    this.heldKeys.add(keycode);
     const char = e.key.length === 1 ? e.key.codePointAt(0) ?? 0 : 0;
     const buf = new Uint8Array(9);
     const view = new DataView(buf.buffer);
@@ -1639,6 +1672,7 @@ var VeilClient = class {
     e.preventDefault();
     const keycode = SCAN_CODE_MAP[e.code] ?? 0;
     if (keycode === 0) return;
+    this.heldKeys.delete(keycode);
     const buf = new Uint8Array(5);
     const view = new DataView(buf.buffer);
     buf[0] = INPUT_KEY_UP;
@@ -1654,6 +1688,7 @@ var VeilClient = class {
     }
     const { x, y } = this.streamCoords(e);
     const btn = MOUSE_BUTTON_MAP[e.button] ?? e.button;
+    this.heldButtons.set(btn, { x, y });
     const buf = new Uint8Array(13);
     const view = new DataView(buf.buffer);
     buf[0] = INPUT_MOUSE_DOWN;
@@ -1670,6 +1705,7 @@ var VeilClient = class {
     }
     const { x, y } = this.streamCoords(e);
     const btn = MOUSE_BUTTON_MAP[e.button] ?? e.button;
+    this.heldButtons.delete(btn);
     const buf = new Uint8Array(13);
     const view = new DataView(buf.buffer);
     buf[0] = INPUT_MOUSE_UP;
@@ -1867,6 +1903,14 @@ var VeilClient = class {
   }
   cleanup() {
     this.releaseMouse();
+    if (this.onFocusLost) {
+      window.removeEventListener("blur", this.onFocusLost);
+      document.removeEventListener("visibilitychange", this.onFocusLost);
+      document.removeEventListener("fullscreenchange", this.onFocusLost);
+      this.onFocusLost = null;
+    }
+    this.heldKeys.clear();
+    this.heldButtons.clear();
     if (this.onPointerLockChange) {
       document.removeEventListener("pointerlockchange", this.onPointerLockChange);
       this.onPointerLockChange = null;
@@ -2940,7 +2984,7 @@ async function toggleFullscreen() {
       await (client ? client.exitFullscreen() : document.exitFullscreen());
     } else if (client) {
       const escLocked = await client.enterFullscreen(canvasWrap);
-      showBadge(escLocked ? `<b>Fullscreen</b> \u2014 Esc goes to the app \xB7 click the stream to capture the mouse \xB7 hold Esc to leave` : `<b>Fullscreen</b> \u2014 this browser won't pass Esc to the app, so Esc releases the mouse`);
+      showBadge(escLocked ? `<b>Fullscreen</b> \u2014 all keys (Esc too) go to the app \xB7 click the stream to capture the mouse \xB7 hold Esc to leave` : `<b>Fullscreen</b> \u2014 this browser won't pass Esc to the app, so Esc releases the mouse`);
     } else {
       await canvasWrap.requestFullscreen();
     }
@@ -2954,6 +2998,10 @@ document.addEventListener("fullscreenchange", () => {
   const full = document.fullscreenElement !== null;
   fullscreenBtn.textContent = full ? "\u26F6 Exit fullscreen" : "\u26F6 Fullscreen";
   if (!full) void client?.exitFullscreen();
+  if (client) canvas.focus({ preventScroll: true });
+});
+window.addEventListener("focus", () => {
+  if (client?.getState() === "connected" /* Connected */) canvas.focus({ preventScroll: true });
 });
 document.addEventListener("keydown", (e) => {
   if (!e.ctrlKey || !e.altKey || e.shiftKey || e.metaKey) return;

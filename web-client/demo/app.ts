@@ -1156,7 +1156,7 @@ async function toggleFullscreen() {
     } else if (client) {
       const escLocked = await client.enterFullscreen(canvasWrap);
       showBadge(escLocked
-        ? `<b>Fullscreen</b> — Esc goes to the app · click the stream to capture the mouse · hold Esc to leave`
+        ? `<b>Fullscreen</b> — all keys (Esc too) go to the app · click the stream to capture the mouse · hold Esc to leave`
         : `<b>Fullscreen</b> — this browser won't pass Esc to the app, so Esc releases the mouse`);
     } else {
       await canvasWrap.requestFullscreen();
@@ -1173,6 +1173,13 @@ document.addEventListener('fullscreenchange', () => {
   fullscreenBtn.textContent = full ? '⛶ Exit fullscreen' : '⛶ Fullscreen';
   // Left with a long Esc press: let go of the keyboard too.
   if (!full) void client?.exitFullscreen();
+  // Keys only reach the stream while it has focus, which the fullscreen
+  // button (or the page) would otherwise keep.
+  if (client) canvas.focus({ preventScroll: true });
+});
+// Back from another window or app: type into the stream again.
+window.addEventListener('focus', () => {
+  if (client?.getState() === ConnectionState.Connected) canvas.focus({ preventScroll: true });
 });
 
 // Ctrl+Alt+M toggles capture and Ctrl+Alt+F fullscreen (Control+Option on a
