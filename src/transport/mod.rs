@@ -17,6 +17,7 @@
 pub mod proto;
 mod session;
 mod adapt;
+mod hid;
 mod viewers;
 
 pub use adapt::auto_codec_enabled;

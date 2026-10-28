@@ -255,8 +255,11 @@ export interface WindowInfo {
 
 // ─── Server-side info ───────────────────────────────────────────────────────
 
-/** Which controller to emulate for a pad; 'auto' picks by the pad's vendor. */
-export type GamepadType = 'auto' | 'xbox' | 'playstation';
+/**
+ * Which controller to emulate for a pad: 'auto' picks by the pad's vendor,
+ * 'off' doesn't emulate it at all (e.g. it's passed through as raw HID).
+ */
+export type GamepadType = 'auto' | 'xbox' | 'playstation' | 'off';
 
 /** A video codec, as the server names it. AV1 is experimental. */
 export type VideoCodecName = 'h264' | 'h265' | 'av1';
@@ -454,8 +457,22 @@ export interface VeilEventMap {
   viewers: ViewerList;
   /** This viewer's network and the stream's adaptation, every second. */
   network: NetworkStatus;
+  /** The passed-through HID devices changed (added, removed, opened or failed). */
+  hidpassthrough: HidPassthroughInfo[];
   /** What this browser decodes, as reported to the server. */
   decodesupport: DecodeSupport;
+}
+
+/** A HID device passed through to the server (see `VeilClient.passThroughHid`). */
+export interface HidPassthroughInfo {
+  handle: number;
+  name: string;
+  vendorId: number;
+  productId: number;
+  bus: 'usb' | 'bluetooth';
+  /** Waiting for the server, recreated there, or refused (see `error`). */
+  status: 'opening' | 'active' | 'failed';
+  error: string | null;
 }
 
 /** How well this browser decodes a codec at the stream's size. */

@@ -7,6 +7,8 @@
  */
 
 export { VeilClient, detectGamepadLayout } from './VeilClient';
+export { buildReportDescriptor, guessBus } from './HidPassthrough';
+export type { HidDevice } from './HidPassthrough';
 export { VeilVideoDecoder } from './VideoDecoder';
 export { InputManager } from './InputManager';
 export { AudioPlayer } from './AudioPlayer';

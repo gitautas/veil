@@ -6,6 +6,7 @@ pub mod control;
 mod audio;
 mod handle;
 mod dualsense;
+pub(crate) mod uhid;
 mod input;
 pub(crate) mod reactor;
 mod video;

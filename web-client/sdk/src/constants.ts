@@ -47,6 +47,18 @@ export const MSG_VIEWERS = 0x1A;
 export const MSG_GAMEPAD_RUMBLE = 0x1B;
 /** This viewer's network and the stream's adaptation (JSON), every second. */
 export const MSG_NETWORK = 0x1C;
+/** Do something on a passed-through HID device: [handle][kind][request u32][report number][data]. */
+export const MSG_HID_REQUEST = 0x1D;
+/** Whether a HID passthrough opened (JSON). */
+export const MSG_HID_STATUS = 0x1E;
+
+// Client → server streams (HID passthrough).
+/** Pass a device through (JSON with its rebuilt report descriptor). */
+export const HID_OPEN = 0x40;
+/** Stop passing a device through: [handle]. */
+export const HID_CLOSE = 0x41;
+/** Answer a 0x1D request: [handle][kind][request u32][status][data]. */
+export const HID_REPLY = 0x43;
 
 /** Frame type flags. */
 export const FRAME_KEY = 0x00;
@@ -82,6 +94,8 @@ export const INPUT_SWITCH_GPU = 0x30;
 export const INPUT_GAMEPAD_STATE = 0x31;
 /** What this browser can decode (JSON), for the server's Auto codec. */
 export const INPUT_DECODE_CAPS = 0x32;
+/** An input report from a passed-through HID device (datagram): [handle][report]. */
+export const INPUT_HID_REPORT = 0x42;
 
 // ─── Client timing ──────────────────────────────────────────────────────────
 

@@ -21,6 +21,11 @@ var MSG_COMPOSITOR_STATE = 25;
 var MSG_VIEWERS = 26;
 var MSG_GAMEPAD_RUMBLE = 27;
 var MSG_NETWORK = 28;
+var MSG_HID_REQUEST = 29;
+var MSG_HID_STATUS = 30;
+var HID_OPEN = 64;
+var HID_CLOSE = 65;
+var HID_REPLY = 67;
 var FRAME_KEY = 0;
 var CODEC_H265 = 2;
 var CODEC_AV1 = 3;
@@ -41,6 +46,7 @@ var INPUT_SET_PARAMS = 47;
 var INPUT_SWITCH_GPU = 48;
 var INPUT_GAMEPAD_STATE = 49;
 var INPUT_DECODE_CAPS = 50;
+var INPUT_HID_REPORT = 66;
 var STATS_UPDATE_INTERVAL = 1e3;
 var GAMEPAD_POLL_INTERVAL = 4;
 var GAMEPAD_RESEND_INTERVAL = 100;
@@ -551,6 +557,250 @@ var AudioPlayer = class {
   }
 };
 
+// ../sdk/src/HidPassthrough.ts
+var UNIT_SYSTEMS = {
+  "none": 0,
+  "si-linear": 1,
+  "si-rotation": 2,
+  "english-linear": 3,
+  "english-rotation": 4,
+  "vendor-defined": 15
+};
+function shortItem(prefix, value, signed) {
+  const fits = (bytes) => {
+    const bits = bytes * 8;
+    return signed ? value >= -(2 ** (bits - 1)) && value < 2 ** (bits - 1) : value >= 0 && value < 2 ** bits;
+  };
+  const size = value === 0 ? 0 : fits(1) ? 1 : fits(2) ? 2 : 4;
+  const code = size === 4 ? 3 : size;
+  const out = [prefix | code];
+  for (let i = 0; i < size; i++) out.push(value >>> 8 * i & 255);
+  return out;
+}
+function unitCode(item) {
+  const system = UNIT_SYSTEMS[item.unitSystem] ?? 0;
+  if (system === 0) return 0;
+  const nib = (v) => v & 15;
+  return (system | nib(item.unitFactorLengthExponent) << 4 | nib(item.unitFactorMassExponent) << 8 | nib(item.unitFactorTimeExponent) << 12 | nib(item.unitFactorTemperatureExponent) << 16 | nib(item.unitFactorCurrentExponent) << 20 | nib(item.unitFactorLuminousIntensityExponent) << 24) >>> 0;
+}
+function buildReportDescriptor(collections) {
+  const out = [];
+  const g = /* @__PURE__ */ new Map();
+  const global = (prefix, value, signed = false) => {
+    if (g.get(prefix) === value) return;
+    g.set(prefix, value);
+    out.push(...shortItem(prefix, value, signed));
+  };
+  const usagePage = (page) => global(4, page);
+  const emitItem = (main, item) => {
+    const usages = item.isRange ? [item.usageMinimum, item.usageMaximum] : item.usages;
+    const pages = new Set(usages.map((u) => u >>> 16));
+    const extended = pages.size > 1;
+    if (usages.length > 0 && !extended) usagePage(usages[0] >>> 16);
+    const usage = (prefix, u) => out.push(...extended ? shortItemFixed4(prefix, u) : shortItem(prefix, u & 65535, false));
+    if (item.isRange) {
+      usage(24, item.usageMinimum);
+      usage(40, item.usageMaximum);
+    } else {
+      for (const u of item.usages) usage(8, u);
+    }
+    global(20, item.logicalMinimum, true);
+    global(36, item.logicalMaximum, true);
+    global(52, item.physicalMinimum, true);
+    global(68, item.physicalMaximum, true);
+    global(84, item.unitExponent & 15);
+    global(100, unitCode(item));
+    global(116, item.reportSize);
+    global(148, item.reportCount);
+    const flags = (item.isConstant ? 1 : 0) | (item.isArray ? 0 : 1 << 1) | (item.isAbsolute ? 0 : 1 << 2) | (item.wrap ? 1 << 3 : 0) | (item.isLinear ? 0 : 1 << 4) | (item.hasPreferredState ? 0 : 1 << 5) | (item.hasNull ? 1 << 6 : 0) | (item.isVolatile && main !== 128 ? 1 << 7 : 0) | (item.isBufferedBytes ? 1 << 8 : 0);
+    out.push(...flags > 255 ? [main | 2, flags & 255, flags >> 8] : shortItem(main, flags, false));
+  };
+  const emitReports = (main, reports) => {
+    for (const report of reports) {
+      if (report.reportId !== 0) global(132, report.reportId);
+      for (const item of report.items) emitItem(main, item);
+    }
+  };
+  const emitCollection = (c) => {
+    usagePage(c.usagePage);
+    out.push(...shortItem(8, c.usage, false));
+    out.push(...shortItem(160, c.type, false));
+    emitReports(128, c.inputReports);
+    emitReports(144, c.outputReports);
+    emitReports(176, c.featureReports);
+    for (const child of c.children) emitCollection(child);
+    out.push(192);
+  };
+  for (const c of collections) emitCollection(c);
+  return new Uint8Array(out);
+}
+function shortItemFixed4(prefix, value) {
+  return [prefix | 3, value & 255, value >>> 8 & 255, value >>> 16 & 255, value >>> 24 & 255];
+}
+function usesReportIds(collections) {
+  return collections.some((c) => [...c.inputReports, ...c.outputReports, ...c.featureReports].some((r) => r.reportId !== 0) || usesReportIds(c.children));
+}
+function inputReportIds(collections) {
+  const ids = /* @__PURE__ */ new Set();
+  const walk = (c) => {
+    c.inputReports.forEach((r) => ids.add(r.reportId));
+    c.children.forEach(walk);
+  };
+  collections.forEach(walk);
+  return ids;
+}
+function guessBus(device) {
+  if (device.vendorId === 1356) {
+    const ids = inputReportIds(device.collections);
+    if (ids.has(49) || ids.has(17)) return "bluetooth";
+  }
+  return "usb";
+}
+var HidPassthrough = class {
+  constructor(transport) {
+    this.transport = transport;
+    this.devices = /* @__PURE__ */ new Map();
+    this.nextHandle = 0;
+  }
+  list() {
+    return [...this.devices.values()].map((d) => ({ ...d.info }));
+  }
+  /**
+   * Whether a Gamepad API pad is (probably) one of the passed-through
+   * devices: by vendor/product when its ID shows them, otherwise by name
+   * (browsers describe the same pad differently per OS and connection).
+   */
+  coversPad(padId, ids) {
+    const name = padId.toLowerCase();
+    return [...this.devices.values()].some((d) => ids ? d.device.vendorId === ids[0] && d.device.productId === ids[1] : !!d.device.productName && name.includes(d.device.productName.toLowerCase()));
+  }
+  /** Open `device` and recreate it on the server. Resolves to its handle. */
+  async add(device) {
+    for (const d of this.devices.values()) {
+      if (d.device === device) return d.info.handle;
+    }
+    const handle = this.nextHandle++ & 255;
+    if (!device.opened) await device.open();
+    const usesIds = usesReportIds(device.collections);
+    const descriptor = buildReportDescriptor(device.collections);
+    const info = {
+      handle,
+      name: device.productName || `HID ${hex4(device.vendorId)}:${hex4(device.productId)}`,
+      vendorId: device.vendorId,
+      productId: device.productId,
+      bus: guessBus(device),
+      status: "opening",
+      error: null
+    };
+    const onInput = (e) => {
+      const { reportId, data } = e;
+      const prefix = usesIds ? 1 : 0;
+      const buf = new Uint8Array(2 + prefix + data.byteLength);
+      buf[0] = INPUT_HID_REPORT;
+      buf[1] = handle;
+      if (usesIds) buf[2] = reportId;
+      buf.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), 2 + prefix);
+      this.transport.datagram(buf);
+    };
+    device.addEventListener("inputreport", onInput);
+    this.devices.set(handle, { info, device, usesIds, onInput });
+    this.transport.changed(this.list());
+    const json = JSON.stringify({
+      handle,
+      name: info.name,
+      vendor: device.vendorId,
+      product: device.productId,
+      bus: info.bus,
+      descriptor: Array.from(descriptor)
+    });
+    const body = new TextEncoder().encode(json);
+    const msg = new Uint8Array(1 + body.length);
+    msg[0] = HID_OPEN;
+    msg.set(body, 1);
+    await this.transport.stream(msg);
+    this.transport.log(`HID passthrough: opening ${info.name} (${descriptor.length}-byte descriptor, ${info.bus})`);
+    return handle;
+  }
+  /** Stop passing a device through (and close it). */
+  async remove(handle) {
+    const d = this.devices.get(handle);
+    if (!d) return;
+    this.devices.delete(handle);
+    d.device.removeEventListener("inputreport", d.onInput);
+    this.transport.changed(this.list());
+    await this.transport.stream(new Uint8Array([HID_CLOSE, handle])).catch(() => {
+    });
+    await d.device.close().catch(() => {
+    });
+  }
+  /** Forget every device (e.g. the connection closed). */
+  async clear() {
+    const devices = [...this.devices.values()];
+    this.devices.clear();
+    for (const d of devices) {
+      d.device.removeEventListener("inputreport", d.onInput);
+      await d.device.close().catch(() => {
+      });
+    }
+    this.transport.changed([]);
+  }
+  /** The server's answer to opening a device (MSG 0x1E). */
+  handleStatus(status) {
+    const d = this.devices.get(status.handle);
+    if (!d) return;
+    d.info.status = status.ok ? "active" : "failed";
+    d.info.error = status.error;
+    this.transport.changed(this.list());
+  }
+  /** Something the server needs done on a device (MSG 0x1D). */
+  async handleRequest(payload) {
+    if (payload.length < 7) return;
+    const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+    const handle = payload[0];
+    const kind = payload[1];
+    const request = view.getUint32(2);
+    const reportNumber = payload[6];
+    const data = payload.subarray(7);
+    const d = this.devices.get(handle);
+    if (!d) return;
+    const split = (bytes, id) => d.usesIds && bytes.length > 0 ? [bytes[0], bytes.slice(1)] : [id, bytes.slice()];
+    try {
+      if (kind === 0) {
+        const [id, body] = split(data, 0);
+        await d.device.sendReport(id, body);
+        return;
+      }
+      if (kind === 1) {
+        const view2 = await d.device.receiveFeatureReport(reportNumber);
+        let bytes = new Uint8Array(view2.buffer, view2.byteOffset, view2.byteLength);
+        if (d.usesIds && reportNumber !== 0 && bytes[0] !== reportNumber) {
+          bytes = Uint8Array.from([reportNumber, ...bytes]);
+        }
+        await this.reply(handle, kind, request, 0, bytes);
+      } else {
+        const [id, body] = split(data, reportNumber);
+        await (kind === 2 ? d.device.sendFeatureReport(id, body) : d.device.sendReport(id, body));
+        await this.reply(handle, kind, request, 0, new Uint8Array());
+      }
+    } catch (err) {
+      this.transport.log(`HID passthrough: ${d.info.name} request failed:`, err instanceof Error ? err.message : err);
+      if (kind !== 0) await this.reply(handle, kind, request, 5, new Uint8Array());
+    }
+  }
+  async reply(handle, kind, request, status, data) {
+    const msg = new Uint8Array(8 + data.length);
+    const view = new DataView(msg.buffer);
+    msg[0] = HID_REPLY;
+    msg[1] = handle;
+    msg[2] = kind;
+    view.setUint32(3, request);
+    msg[7] = status;
+    msg.set(data, 8);
+    await this.transport.stream(msg);
+  }
+};
+var hex4 = (n) => n.toString(16).padStart(4, "0");
+
 // ../sdk/src/VeilClient.ts
 var VeilClient = class {
   constructor(config) {
@@ -563,6 +813,13 @@ var VeilClient = class {
     this.ctx2d = null;
     this.statsInterval = null;
     this.gamepadInterval = null;
+    /** HID devices passed through to the server. */
+    this.hid = new HidPassthrough({
+      stream: (data) => this.sendStream(data),
+      datagram: (data) => this.sendDatagram(data),
+      log: (...args) => this.log(...args),
+      changed: (list) => this.emit("hidpassthrough", list)
+    });
     /** Keyboard Lock holds Escape (only active while fullscreen). */
     this.escapeLocked = false;
     /** Re-sends decode support and watches for the decoder falling behind. */
@@ -745,7 +1002,8 @@ var VeilClient = class {
   /**
    * Choose which controller the server emulates for a pad: 'auto' (the
    * default) emulates a DualSense for PlayStation pads and an Xbox 360 pad
-   * for everything else. Changing it replaces the virtual device.
+   * for everything else; 'off' stops emulating it (the server unplugs its
+   * virtual pad). Changing it replaces the virtual device.
    */
   setGamepadType(index, type) {
     if (type === "auto") this.gamepadTypes.delete(index);
@@ -814,9 +1072,38 @@ var VeilClient = class {
     }
     if (++this.decodeTicks % 5 === 0) this.sendDecodeSupport();
   }
-  /** The controller the server is asked to emulate for a pad. */
-  getGamepadLayout(pad) {
+  /**
+   * Pass HID devices through to the server, where they're recreated so games
+   * see the real hardware. Without `device`, shows the browser's device
+   * chooser (must be called from a user gesture). Browsers don't offer
+   * keyboards or mice. A passed-through gamepad stops being emulated.
+   * Resolves to the handles of the devices passed through.
+   */
+  async passThroughHid(device) {
+    if (!this.transport) throw new Error("Not connected");
+    const hid = navigator.hid;
+    const devices = device ? [device] : await hid.requestDevice({ filters: [] });
+    const handles = [];
+    for (const d of devices) handles.push(await this.hid.add(d));
+    return handles;
+  }
+  /** Stop passing a device through (the server unplugs it). */
+  stopHidPassthrough(handle) {
+    return this.hid.remove(handle);
+  }
+  /** The devices passed through to the server. */
+  getHidPassthrough() {
+    return this.hid.list();
+  }
+  /**
+   * How a pad is emulated: as an Xbox 360 pad or a DualSense, not at all
+   * ('off', see `setGamepadType`), or not because the same device is passed
+   * through as raw HID ('passthrough').
+   */
+  gamepadEmulation(pad) {
     const type = this.gamepadTypes.get(pad.index) ?? "auto";
+    if (type === "off") return "off";
+    if (this.hid.coversPad(pad.id, padVendorProduct(pad.id))) return "passthrough";
     return type === "auto" ? detectGamepadLayout(pad.id) : type;
   }
   setMuted(muted) {
@@ -935,6 +1222,12 @@ var VeilClient = class {
         break;
       case MSG_GAMEPAD_RUMBLE:
         this.handleGamepadRumble(payload);
+        break;
+      case MSG_HID_REQUEST:
+        void this.hid.handleRequest(payload);
+        break;
+      case MSG_HID_STATUS:
+        this.hid.handleStatus(JSON.parse(new TextDecoder().decode(payload)));
         break;
       case MSG_NETWORK:
         this.emit("network", JSON.parse(new TextDecoder().decode(payload)));
@@ -1431,17 +1724,19 @@ var VeilClient = class {
     const currentIndices = /* @__PURE__ */ new Set();
     for (const pad of pads) {
       if (!pad || pad.index > 255) continue;
+      const emulation = this.gamepadEmulation(pad);
+      if (emulation === "off" || emulation === "passthrough") continue;
       currentIndices.add(pad.index);
       let tracked = this.gamepads.get(pad.index);
       if (!tracked) {
         tracked = { seq: 0, last: null, sentAt: 0 };
         this.gamepads.set(pad.index, tracked);
         this.emit("gamepadconnected", { index: pad.index, id: pad.id });
-        const layout2 = GAMEPAD_LAYOUT_WIRE[this.getGamepadLayout(pad)];
+        const layout2 = GAMEPAD_LAYOUT_WIRE[emulation];
         this.sendDatagram(new Uint8Array([INPUT_GAMEPAD_AVAILABLE, pad.index, layout2]));
       }
       const snapshot = gamepadSnapshot(pad);
-      const layout = GAMEPAD_LAYOUT_WIRE[this.getGamepadLayout(pad)];
+      const layout = GAMEPAD_LAYOUT_WIRE[emulation];
       const key = `${snapshot.key}|${layout}`;
       if (key !== tracked.last || now - tracked.sentAt >= GAMEPAD_RESEND_INTERVAL) {
         tracked.seq = tracked.seq + 1 >>> 0;
@@ -1466,6 +1761,14 @@ var VeilClient = class {
     }
   }
   // ─── Datagram sender ──────────────────────────────────────────────────────
+  /** Send a message reliably, on a stream of its own. */
+  async sendStream(data) {
+    if (!this.transport) throw new Error("Not connected");
+    const stream = await this.transport.createUnidirectionalStream();
+    const writer = stream.getWriter();
+    await writer.write(data);
+    await writer.close();
+  }
   sendDatagram(data) {
     if (!this.datagramWriter) return;
     this.datagramWriter.write(data).catch(
@@ -1590,6 +1893,7 @@ var VeilClient = class {
     });
     this.datagramWriter = null;
     this.gamepads.clear();
+    void this.hid.clear();
     for (const timer of this.rumbleTimers.values()) clearTimeout(timer);
     this.rumbleTimers.clear();
     this.pendingPings.clear();
@@ -1666,6 +1970,10 @@ function detectGamepadLayout(id) {
 }
 var DECODE_BACKLOG_FRAMES = 8;
 var DECODE_BACKLOG_SECS = 3;
+function padVendorProduct(id) {
+  const m = id.match(/vendor:\s*([0-9a-f]{4})\s*product:\s*([0-9a-f]{4})/i) ?? id.match(/^([0-9a-f]{4})-([0-9a-f]{4})-/i);
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16)] : null;
+}
 
 // app.ts
 var $ = (id) => document.getElementById(id);
@@ -1744,6 +2052,8 @@ var logEmpty = $("logEmpty");
 var copyLogBtn = $("copyLogBtn");
 var clearLogBtn = $("clearLogBtn");
 var padList = $("padList");
+var hidList = $("hidList");
+var hidAddBtn = $("hidAddBtn");
 var padEmpty = $("padEmpty");
 var padNote = $("padNote");
 var compNote = $("compNote");
@@ -2242,7 +2552,7 @@ var padCards = /* @__PURE__ */ new Map();
 function loadPadType(padId) {
   try {
     const v = localStorage.getItem(`veil.padType.${padId}`);
-    if (v === "xbox" || v === "playstation") return v;
+    if (v === "xbox" || v === "playstation" || v === "off") return v;
   } catch {
   }
   return "auto";
@@ -2270,6 +2580,7 @@ function makeCard(pad) {
         <option value="auto">Auto (${detectGamepadLayout(pad.id) === "playstation" ? "DualSense" : "Xbox 360"})</option>
         <option value="xbox">Xbox 360</option>
         <option value="playstation">DualSense</option>
+        <option value="off">Off (don't emulate)</option>
       </select>
     </div>
     <div class="pad-row"><span class="k">Server</span><span class="v" data-server></span></div>
@@ -2311,6 +2622,7 @@ function makeCard(pad) {
     const type = card.type.value;
     savePadType(pad.id, type);
     client?.setGamepadType(pad.index, type);
+    renderPadInfo();
   });
   card.browser.textContent = [
     usb && `USB ${usb}`,
@@ -2323,9 +2635,17 @@ function renderPadInfo() {
   const connected = client?.getState() === "connected" /* Connected */;
   for (const [index, card] of padCards) {
     const s = padStatus.get(index);
+    const pad = navigator.getGamepads?.()[index];
+    const emulation = pad && client ? client.gamepadEmulation(pad) : null;
     if (!connected) {
       card.server.className = "v";
       card.server.textContent = "Not connected";
+    } else if (emulation === "off") {
+      card.server.className = "v";
+      card.server.textContent = "Not emulated (turned off)";
+    } else if (emulation === "passthrough") {
+      card.server.className = "v pad-ok";
+      card.server.textContent = "Not emulated: passed through as raw HID (see below)";
     } else if (!s) {
       card.server.className = "v pad-wait";
       card.server.textContent = "Waiting for the virtual device\u2026";
@@ -2649,6 +2969,61 @@ document.addEventListener("keydown", (e) => {
     void toggleFullscreen();
   }
 }, { capture: true });
+function loadHidKeys() {
+  try {
+    return JSON.parse(localStorage.getItem("veil.hidDevices") ?? "[]");
+  } catch {
+    return [];
+  }
+}
+function saveHidKeys(keys) {
+  try {
+    localStorage.setItem("veil.hidDevices", JSON.stringify([...new Set(keys)]));
+  } catch {
+  }
+}
+var hidKey = (d) => `${d.vendorId}:${d.productId}:${d.productName ?? d.name ?? ""}`;
+function renderHid(list) {
+  renderPadInfo();
+  hidList.innerHTML = "";
+  for (const d of list) {
+    const row = document.createElement("div");
+    row.className = "hid-row";
+    const label = { opening: "Opening\u2026", active: "Passed through", failed: "Refused" }[d.status];
+    row.innerHTML = `<span class="name">${escapeHtml(d.name)}
+        <span class="st ${d.status}" title="${escapeHtml(d.error ?? "")}">\xB7 ${label}${d.error ? `: ${escapeHtml(d.error)}` : ""}</span></span>
+      <button class="btn btn-ghost">Stop</button>`;
+    row.querySelector("button").addEventListener("click", () => {
+      saveHidKeys(loadHidKeys().filter((k) => k !== hidKey(d)));
+      void client?.stopHidPassthrough(d.handle);
+    });
+    hidList.appendChild(row);
+  }
+}
+hidAddBtn.addEventListener("click", async () => {
+  if (!client) return;
+  try {
+    const before = new Set(client.getHidPassthrough().map((d) => d.handle));
+    await client.passThroughHid();
+    const added = client.getHidPassthrough().filter((d) => !before.has(d.handle));
+    saveHidKeys([...loadHidKeys(), ...added.map(hidKey)]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/no device selected/i.test(msg)) toast(`Couldn't pass a device through: ${msg}`);
+  }
+});
+async function reopenHidDevices(c) {
+  const keys = new Set(loadHidKeys());
+  if (keys.size === 0) return;
+  try {
+    const devices = await navigator.hid.getDevices();
+    for (const d of devices) {
+      if (keys.has(hidKey(d)) && client === c) await c.passThroughHid(d);
+    }
+  } catch (err) {
+    console.warn("[veil] reopening HID devices failed:", err);
+  }
+}
 var STATE_LABEL = {
   ["disconnected" /* Disconnected */]: "Disconnected",
   ["connecting" /* Connecting */]: "Connecting\u2026",
@@ -2666,6 +3041,8 @@ function setStatus(state) {
   connState.textContent = STATE_LABEL[state];
   if (!expectingRestart) connNote.textContent = "";
   connectBtn.disabled = !idle;
+  hidAddBtn.disabled = !connected;
+  if (!connected) renderHid([]);
   disconnBtn.disabled = idle;
   if (idle) {
     resetViewers();
@@ -2755,9 +3132,11 @@ async function connect() {
   c.on("compositorstate", (st) => client === c && onCompositorState(st));
   c.on("viewers", (list) => client === c && onViewers(list));
   c.on("network", (n) => client === c && onNetwork(n));
+  c.on("hidpassthrough", (list) => client === c && renderHid(list));
   setStatus("connecting" /* Connecting */);
   try {
     await c.connect(canvas);
+    void reopenHidDevices(c);
     return true;
   } catch (err) {
     console.error("[veil] connect failed:", err);

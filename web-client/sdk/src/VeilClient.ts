@@ -31,7 +31,9 @@ import {
   DecodeLevel,
   DecodeSupport,
   NetworkStatus,
+  HidPassthroughInfo,
 } from './types';
+import { HidPassthrough, type HidDevice } from './HidPassthrough';
 import {
   DEFAULT_SERVER_URL,
   DEFAULT_QUIC_PORT,
@@ -67,6 +69,8 @@ import {
   INPUT_GAMEPAD_STATE,
   MSG_GAMEPAD_RUMBLE,
   MSG_NETWORK,
+  MSG_HID_REQUEST,
+  MSG_HID_STATUS,
   INPUT_DECODE_CAPS,
   H265_CODEC_STRING,
   AV1_CODEC_STRING,
@@ -94,6 +98,7 @@ declare class WebTransport {
   readonly ready: Promise<void>;
   readonly closed: Promise<WebTransportCloseInfo>;
   readonly incomingUnidirectionalStreams: ReadableStream<ReadableStream<Uint8Array>>;
+  createUnidirectionalStream(): Promise<WritableStream<Uint8Array>>;
   readonly datagrams: WebTransportDatagramDuplexStream;
   close(info?: WebTransportCloseInfo): void;
 }
@@ -135,6 +140,13 @@ export class VeilClient {
 
   private statsInterval: ReturnType<typeof setInterval> | null = null;
   private gamepadInterval: ReturnType<typeof setInterval> | null = null;
+  /** HID devices passed through to the server. */
+  private hid = new HidPassthrough({
+    stream: (data) => this.sendStream(data),
+    datagram: (data) => this.sendDatagram(data),
+    log: (...args) => this.log(...args),
+    changed: (list) => this.emit('hidpassthrough', list),
+  });
   /** Keyboard Lock holds Escape (only active while fullscreen). */
   private escapeLocked = false;
   /** Re-sends decode support and watches for the decoder falling behind. */
@@ -365,7 +377,8 @@ export class VeilClient {
   /**
    * Choose which controller the server emulates for a pad: 'auto' (the
    * default) emulates a DualSense for PlayStation pads and an Xbox 360 pad
-   * for everything else. Changing it replaces the virtual device.
+   * for everything else; 'off' stops emulating it (the server unplugs its
+   * virtual pad). Changing it replaces the virtual device.
    */
   setGamepadType(index: number, type: GamepadType): void {
     if (type === 'auto') this.gamepadTypes.delete(index);
@@ -433,9 +446,43 @@ export class VeilClient {
     if (++this.decodeTicks % 5 === 0) this.sendDecodeSupport();
   }
 
-  /** The controller the server is asked to emulate for a pad. */
-  getGamepadLayout(pad: Gamepad): 'xbox' | 'playstation' {
+  /**
+   * Pass HID devices through to the server, where they're recreated so games
+   * see the real hardware. Without `device`, shows the browser's device
+   * chooser (must be called from a user gesture). Browsers don't offer
+   * keyboards or mice. A passed-through gamepad stops being emulated.
+   * Resolves to the handles of the devices passed through.
+   */
+  async passThroughHid(device?: HidDevice): Promise<number[]> {
+    if (!this.transport) throw new Error('Not connected');
+    const hid = (navigator as Navigator & {
+      hid: { requestDevice(o: { filters: object[] }): Promise<HidDevice[]> };
+    }).hid;
+    const devices = device ? [device] : await hid.requestDevice({ filters: [] });
+    const handles: number[] = [];
+    for (const d of devices) handles.push(await this.hid.add(d));
+    return handles;
+  }
+
+  /** Stop passing a device through (the server unplugs it). */
+  stopHidPassthrough(handle: number): Promise<void> {
+    return this.hid.remove(handle);
+  }
+
+  /** The devices passed through to the server. */
+  getHidPassthrough(): HidPassthroughInfo[] {
+    return this.hid.list();
+  }
+
+  /**
+   * How a pad is emulated: as an Xbox 360 pad or a DualSense, not at all
+   * ('off', see `setGamepadType`), or not because the same device is passed
+   * through as raw HID ('passthrough').
+   */
+  gamepadEmulation(pad: Gamepad): 'xbox' | 'playstation' | 'off' | 'passthrough' {
     const type = this.gamepadTypes.get(pad.index) ?? 'auto';
+    if (type === 'off') return 'off';
+    if (this.hid.coversPad(pad.id, padVendorProduct(pad.id))) return 'passthrough';
     return type === 'auto' ? detectGamepadLayout(pad.id) : type;
   }
 
@@ -574,6 +621,12 @@ export class VeilClient {
         break;
       case MSG_GAMEPAD_RUMBLE:
         this.handleGamepadRumble(payload);
+        break;
+      case MSG_HID_REQUEST:
+        void this.hid.handleRequest(payload);
+        break;
+      case MSG_HID_STATUS:
+        this.hid.handleStatus(JSON.parse(new TextDecoder().decode(payload)));
         break;
       case MSG_NETWORK:
         this.emit('network', JSON.parse(new TextDecoder().decode(payload)) as NetworkStatus);
@@ -1160,6 +1213,10 @@ export class VeilClient {
 
     for (const pad of pads) {
       if (!pad || pad.index > 0xff) continue;
+      // Pads turned off, or passed through as raw HID, aren't emulated: as
+      // far as the server's concerned they're unplugged.
+      const emulation = this.gamepadEmulation(pad);
+      if (emulation === 'off' || emulation === 'passthrough') continue;
       currentIndices.add(pad.index);
 
       let tracked = this.gamepads.get(pad.index);
@@ -1169,7 +1226,7 @@ export class VeilClient {
         this.emit('gamepadconnected', { index: pad.index, id: pad.id });
         // Tell the server to create the virtual device now, before any input,
         // so Steam has time to see it appear.
-        const layout = GAMEPAD_LAYOUT_WIRE[this.getGamepadLayout(pad)];
+        const layout = GAMEPAD_LAYOUT_WIRE[emulation];
         this.sendDatagram(new Uint8Array([INPUT_GAMEPAD_AVAILABLE, pad.index, layout]));
       }
 
@@ -1177,7 +1234,7 @@ export class VeilClient {
       // lost datagram can't leave a button held or a stick deflected. The
       // pad type goes with it, for the same reason.
       const snapshot = gamepadSnapshot(pad);
-      const layout = GAMEPAD_LAYOUT_WIRE[this.getGamepadLayout(pad)];
+      const layout = GAMEPAD_LAYOUT_WIRE[emulation];
       const key = `${snapshot.key}|${layout}`;
       if (key !== tracked.last || now - tracked.sentAt >= GAMEPAD_RESEND_INTERVAL) {
         tracked.seq = (tracked.seq + 1) >>> 0;
@@ -1204,6 +1261,15 @@ export class VeilClient {
   }
 
   // ─── Datagram sender ──────────────────────────────────────────────────────
+
+  /** Send a message reliably, on a stream of its own. */
+  private async sendStream(data: Uint8Array): Promise<void> {
+    if (!this.transport) throw new Error('Not connected');
+    const stream = await this.transport.createUnidirectionalStream();
+    const writer = stream.getWriter();
+    await writer.write(data);
+    await writer.close();
+  }
 
   private sendDatagram(data: Uint8Array): void {
     if (!this.datagramWriter) return;
@@ -1360,6 +1426,7 @@ export class VeilClient {
     this.datagramWriter?.close().catch(() => {});
     this.datagramWriter = null;
     this.gamepads.clear();
+    void this.hid.clear();
     for (const timer of this.rumbleTimers.values()) clearTimeout(timer);
     this.rumbleTimers.clear();
     this.pendingPings.clear();
@@ -1473,3 +1540,13 @@ export function detectGamepadLayout(id: string): 'xbox' | 'playstation' {
 const DECODE_BACKLOG_FRAMES = 8;
 /** ...for this many seconds in a row can't keep up with the codec. */
 const DECODE_BACKLOG_SECS = 3;
+
+/**
+ * A pad's USB vendor and product IDs from its Gamepad API ID, e.g. Chrome's
+ * "... (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)" or Firefox's
+ * "054c-0ce6-...".
+ */
+function padVendorProduct(id: string): [number, number] | null {
+  const m = id.match(/vendor:\s*([0-9a-f]{4})\s*product:\s*([0-9a-f]{4})/i) ?? id.match(/^([0-9a-f]{4})-([0-9a-f]{4})-/i);
+  return m ? [parseInt(m[1]!, 16), parseInt(m[2]!, 16)] : null;
+}

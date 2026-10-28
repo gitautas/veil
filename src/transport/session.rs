@@ -19,6 +19,11 @@ use tracing::{debug, info, warn};
 use wtransport::Connection;
 
 use super::adapt::{Adaptation, AdaptationStatus, DecodeCaps, DeliveryWindow, NetEstimator, NetSample};
+use super::hid::{OpenRequest, Passthrough};
+
+/// The largest message a client may send on a stream (a HID descriptor is at
+/// most 4 KiB, as JSON a few times that).
+const MAX_CLIENT_STREAM: usize = 64 * 1024;
 
 use crate::{
     codec::VideoCodec,
@@ -174,11 +179,87 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
     // Pad indices this viewer has used, so they can be unplugged when it
     // leaves (otherwise a held button would stay held).
     let my_pads = std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeSet::<u8>::new()));
+
+    // HID passthrough: this viewer's devices, and what they ask the browser to do.
+    let (hid_tx, mut hid_rx) = tokio::sync::mpsc::unbounded_channel();
+    let hid = Arc::new(Mutex::new(Passthrough::new(my_id, hid_tx)));
+    // Status replies for the main loop to send.
+    let (hid_status_tx, mut hid_status_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    // Messages that mustn't be lost (opening a device, replies) come on
+    // streams the browser opens.
+    let stream_task = {
+        let conn = conn.clone();
+        let hid = hid.clone();
+        let viewers = cfg.viewers.clone();
+        tokio::spawn(async move {
+            loop {
+                let mut stream = match conn.accept_uni().await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        debug!("client stream accept ended: {e}");
+                        break;
+                    }
+                };
+                let mut data = Vec::new();
+                let mut buf = [0u8; 4096];
+                let mut too_big = false;
+                loop {
+                    match stream.read(&mut buf).await {
+                        Ok(Some(n)) => {
+                            data.extend_from_slice(&buf[..n]);
+                            if data.len() > MAX_CLIENT_STREAM {
+                                too_big = true;
+                                break;
+                            }
+                        }
+                        Ok(None) => break,
+                        Err(e) => {
+                            debug!("client stream read failed: {e}");
+                            data.clear();
+                            break;
+                        }
+                    }
+                }
+                if too_big {
+                    warn!(viewer = my_id, "client stream too large; ignored");
+                    continue;
+                }
+                let Some((&kind, body)) = data.split_first() else { continue };
+                match kind {
+                    proto::HID_OPEN => match serde_json::from_slice::<OpenRequest>(body) {
+                        Ok(req) => {
+                            viewers.input(my_id);
+                            let status = hid.lock().unwrap().open(req);
+                            let _ = hid_status_tx.send(status);
+                        }
+                        Err(e) => warn!(viewer = my_id, "bad HID open request: {e}"),
+                    },
+                    proto::HID_CLOSE => {
+                        if let Some(&handle) = body.first() {
+                            hid.lock().unwrap().close(handle);
+                        }
+                    }
+                    proto::HID_REPLY if body.len() >= 7 => {
+                        let handle = body[0];
+                        // The kind of request this answers (1 = read feature report).
+                        let is_get = body[1] == 1;
+                        let request = u32::from_be_bytes(body[2..6].try_into().unwrap());
+                        let status = body[6];
+                        hid.lock().unwrap().reply(handle, request, is_get, status, &body[7..]);
+                    }
+                    other => debug!(kind = other, "unknown client stream"),
+                }
+            }
+        })
+    };
+
     let input_task = {
         let conn_ref = conn.clone();
         let viewers = cfg.viewers.clone();
         let my_pads = my_pads.clone();
         let adapt = adapt.clone();
+        let hid = hid.clone();
         tokio::spawn(async move {
             // Wait until the reactor control channel is available.
             // Datagrams that arrive before the compositor is ready are dropped.
@@ -220,6 +301,14 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
                                 );
                             }
                             continue; // skip reactor for ping
+                        }
+                        // HID passthrough input reports go straight to the device.
+                        if dgram.first() == Some(&proto::INPUT_HID_REPORT) {
+                            if let Some((&handle, report)) = dgram[1..].split_first() {
+                                viewers.input(my_id);
+                                hid.lock().unwrap().input(handle, report);
+                            }
+                            continue;
                         }
                         // Decode support feeds codec selection here, not the reactor.
                         if dgram.first() == Some(&proto::INPUT_DECODE_CAPS) {
@@ -298,6 +387,20 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
     loop {
         let recv = tokio::select! {
             ev = cfg.events_rx.recv() => ev,
+            Some(req) = hid_rx.recv() => {
+                if let Err(e) = send_stream(&conn, proto::encode_hid_request(&req)).await {
+                    warn!(peer = %peer, "Send error: {e}");
+                    break;
+                }
+                continue;
+            }
+            Some(status) = hid_status_rx.recv() => {
+                if let Err(e) = send_stream(&conn, proto::encode_json(proto::MSG_HID_STATUS, &status)).await {
+                    warn!(peer = %peer, "Send error: {e}");
+                    break;
+                }
+                continue;
+            }
             _ = net_tick.tick() => {
                 let path = conn.quic_connection().stats().path;
                 let window = std::mem::take(&mut *delivery.lock().unwrap());
@@ -495,6 +598,9 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
     }
 
     input_task.abort();
+    stream_task.abort();
+    // Unplug this viewer's passed-through devices.
+    drop(hid);
     send_to_reactor(&refresh_rx, adapt.leave(my_id));
     // Unplug this viewer's pads.
     if let Some(ctrl) = refresh_rx.borrow().as_ref() {

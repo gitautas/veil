@@ -340,6 +340,15 @@
     .pad-wait { color: var(--warn); }
     .pad-row select { padding: 1px 4px; font-size: 0.66rem; }
     .pad-notice { color: var(--warn); }
+    #hidAddBtn { margin-top: 6px; width: 100%; }
+    .hid-row { display: flex; align-items: center; gap: 8px; font-size: 0.68rem; padding: 6px 0;
+               border-top: 1px solid rgba(255,255,255,0.05); }
+    .hid-row .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .hid-row .st { font-size: 0.62rem; }
+    .hid-row .st.active { color: var(--good); }
+    .hid-row .st.failed { color: var(--bad); }
+    .hid-row .st.opening { color: var(--warn); }
+    .hid-row button { padding: 2px 8px; font-size: 0.62rem; }
     .pad-viz { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
     .stick {
       position: relative; width: 44px; height: 44px; flex-shrink: 0;
@@ -545,6 +554,10 @@
       No gamepads detected. Connect a controller and press a button on it — browsers
       only reveal gamepads after they've been used on the page.
     </div>
+    <div id="hidList"></div>
+    <button class="btn btn-ghost" id="hidAddBtn" disabled
+      title="Recreate a device on the server as raw HID: games see the real hardware (e.g. a DualSense's touchpad, motion and lightbar). Browsers don't offer keyboards or mice.">
+      Pass through a HID device…</button>
   </div>
 
   <div class="section">

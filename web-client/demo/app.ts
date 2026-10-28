@@ -8,6 +8,8 @@ import {
   GamepadStatus,
   GamepadType,
   NetworkStatus,
+  HidPassthroughInfo,
+  HidDevice,
   VideoCodecName,
   detectGamepadLayout,
   CompositorState,
@@ -101,6 +103,8 @@ const copyLogBtn  = $<HTMLButtonElement>('copyLogBtn');
 const clearLogBtn = $<HTMLButtonElement>('clearLogBtn');
 
 const padList  = $<HTMLDivElement>('padList');
+const hidList  = $<HTMLDivElement>('hidList');
+const hidAddBtn = $<HTMLButtonElement>('hidAddBtn');
 const padEmpty = $<HTMLDivElement>('padEmpty');
 const padNote  = $('padNote');
 
@@ -697,7 +701,7 @@ const padCards = new Map<number, PadCard>();
 function loadPadType(padId: string): GamepadType {
   try {
     const v = localStorage.getItem(`veil.padType.${padId}`);
-    if (v === 'xbox' || v === 'playstation') return v;
+    if (v === 'xbox' || v === 'playstation' || v === 'off') return v;
   } catch { /* storage unavailable */ }
   return 'auto';
 }
@@ -725,6 +729,7 @@ function makeCard(pad: Gamepad): PadCard {
         <option value="auto">Auto (${detectGamepadLayout(pad.id) === 'playstation' ? 'DualSense' : 'Xbox 360'})</option>
         <option value="xbox">Xbox 360</option>
         <option value="playstation">DualSense</option>
+        <option value="off">Off (don't emulate)</option>
       </select>
     </div>
     <div class="pad-row"><span class="k">Server</span><span class="v" data-server></span></div>
@@ -766,6 +771,7 @@ function makeCard(pad: Gamepad): PadCard {
     const type = card.type.value as GamepadType;
     savePadType(pad.id, type);
     client?.setGamepadType(pad.index, type);
+    renderPadInfo();
   });
   card.browser.textContent = [
     usb && `USB ${usb}`,
@@ -780,9 +786,17 @@ function renderPadInfo() {
   const connected = client?.getState() === ConnectionState.Connected;
   for (const [index, card] of padCards) {
     const s = padStatus.get(index);
+    const pad = navigator.getGamepads?.()[index];
+    const emulation = pad && client ? client.gamepadEmulation(pad) : null;
     if (!connected) {
       card.server.className = 'v';
       card.server.textContent = 'Not connected';
+    } else if (emulation === 'off') {
+      card.server.className = 'v';
+      card.server.textContent = 'Not emulated (turned off)';
+    } else if (emulation === 'passthrough') {
+      card.server.className = 'v pad-ok';
+      card.server.textContent = 'Not emulated: passed through as raw HID (see below)';
     } else if (!s) {
       card.server.className = 'v pad-wait';
       card.server.textContent = 'Waiting for the virtual device…';
@@ -1179,6 +1193,66 @@ document.addEventListener('keydown', (e) => {
   }
 }, { capture: true });
 
+// ─── HID passthrough ──────────────────────────────────────────────────────────
+
+/** Devices to pass through again on reconnect, as "vendor:product:name". */
+function loadHidKeys(): string[] {
+  try { return JSON.parse(localStorage.getItem('veil.hidDevices') ?? '[]'); } catch { return []; }
+}
+
+function saveHidKeys(keys: string[]) {
+  try { localStorage.setItem('veil.hidDevices', JSON.stringify([...new Set(keys)])); } catch { /* storage unavailable */ }
+}
+
+const hidKey = (d: { vendorId: number; productId: number; productName?: string; name?: string }) =>
+  `${d.vendorId}:${d.productId}:${d.productName ?? d.name ?? ''}`;
+
+function renderHid(list: HidPassthroughInfo[]) {
+  renderPadInfo(); // A pad passed through stops being emulated.
+  hidList.innerHTML = '';
+  for (const d of list) {
+    const row = document.createElement('div');
+    row.className = 'hid-row';
+    const label = { opening: 'Opening…', active: 'Passed through', failed: 'Refused' }[d.status];
+    row.innerHTML = `<span class="name">${escapeHtml(d.name)}
+        <span class="st ${d.status}" title="${escapeHtml(d.error ?? '')}">· ${label}${d.error ? `: ${escapeHtml(d.error)}` : ''}</span></span>
+      <button class="btn btn-ghost">Stop</button>`;
+    row.querySelector('button')!.addEventListener('click', () => {
+      saveHidKeys(loadHidKeys().filter((k) => k !== hidKey(d)));
+      void client?.stopHidPassthrough(d.handle);
+    });
+    hidList.appendChild(row);
+  }
+}
+
+hidAddBtn.addEventListener('click', async () => {
+  if (!client) return;
+  try {
+    const before = new Set(client.getHidPassthrough().map((d) => d.handle));
+    await client.passThroughHid();
+    const added = client.getHidPassthrough().filter((d) => !before.has(d.handle));
+    saveHidKeys([...loadHidKeys(), ...added.map(hidKey)]);
+  } catch (err) {
+    // E.g. no WebHID in this browser, or the chooser was cancelled.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/no device selected/i.test(msg)) toast(`Couldn't pass a device through: ${msg}`);
+  }
+});
+
+/** Pass remembered devices through again (Chrome keeps the permission). */
+async function reopenHidDevices(c: VeilClient) {
+  const keys = new Set(loadHidKeys());
+  if (keys.size === 0) return;
+  try {
+    const devices = await (navigator as Navigator & { hid: { getDevices(): Promise<HidDevice[]> } }).hid.getDevices();
+    for (const d of devices) {
+      if (keys.has(hidKey(d)) && client === c) await c.passThroughHid(d);
+    }
+  } catch (err) {
+    console.warn('[veil] reopening HID devices failed:', err);
+  }
+}
+
 // ─── Connection ───────────────────────────────────────────────────────────────
 
 const STATE_LABEL: Record<ConnectionState, string> = {
@@ -1204,6 +1278,8 @@ function setStatus(state: ConnectionState) {
   if (!expectingRestart) connNote.textContent = '';
 
   connectBtn.disabled = !idle;
+  hidAddBtn.disabled = !connected;
+  if (!connected) renderHid([]);
   disconnBtn.disabled = idle;
 
   if (idle) {
@@ -1295,10 +1371,12 @@ async function connect(): Promise<boolean> {
   c.on('compositorstate', (st) => client === c && onCompositorState(st));
   c.on('viewers', (list) => client === c && onViewers(list));
   c.on('network', (n) => client === c && onNetwork(n));
+  c.on('hidpassthrough', (list) => client === c && renderHid(list));
 
   setStatus(ConnectionState.Connecting);
   try {
     await c.connect(canvas);
+    void reopenHidDevices(c);
     return true;
   } catch (err) {
     console.error('[veil] connect failed:', err);

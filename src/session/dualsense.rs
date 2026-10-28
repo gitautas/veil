@@ -11,43 +11,19 @@
 //! pad answers those. Input reports are written whenever the pad changes,
 //! and repeated periodically like a real pad's.
 
-use std::fs::{File, OpenOptions};
-use std::io::{Read as _, Write as _};
-use std::os::fd::AsRawFd as _;
-use std::os::unix::fs::OpenOptionsExt as _;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use anyhow::Context as _;
 use tracing::{debug, info, trace, warn};
 
 use super::control::GamepadState;
 use super::input::Rumble;
+use super::uhid;
 
 /// The name hid-playstation's gamepad node gets for a real pad.
 pub const DEVICE_NAME: &str = "Sony Interactive Entertainment DualSense Wireless Controller";
 const VENDOR: u32 = 0x054c;
 const PRODUCT: u32 = 0x0ce6;
-const BUS_USB: u16 = 0x03;
-
-// struct uhid_event: a u32 type, then the largest member of the union
-// (uhid_create2_req, 4372 bytes).
-const EVENT_SIZE: usize = 4 + 4372;
-const UHID_DATA_MAX: usize = 4096;
-
-const UHID_DESTROY: u32 = 1;
-const UHID_START: u32 = 2;
-const UHID_STOP: u32 = 3;
-const UHID_OPEN: u32 = 4;
-const UHID_CLOSE: u32 = 5;
-const UHID_OUTPUT: u32 = 6;
-const UHID_GET_REPORT: u32 = 9;
-const UHID_GET_REPORT_REPLY: u32 = 10;
-const UHID_CREATE2: u32 = 11;
-const UHID_INPUT2: u32 = 12;
-const UHID_SET_REPORT: u32 = 13;
-const UHID_SET_REPORT_REPLY: u32 = 14;
 
 const INPUT_REPORT_ID: u8 = 0x01;
 const INPUT_REPORT_SIZE: usize = 64;
@@ -102,10 +78,8 @@ struct Shared {
 }
 
 pub struct UhidDualSense {
-    file: Arc<File>,
+    device: uhid::Device,
     shared: Arc<Mutex<Shared>>,
-    stop: Arc<AtomicBool>,
-    thread: Option<std::thread::JoinHandle<()>>,
     rumble: mpsc::Receiver<Rumble>,
     /// The MAC address hid-playstation puts in its input nodes' `uniq`
     /// (it leaves `phys` empty), to find the gamepad's evdev node.
@@ -114,53 +88,89 @@ pub struct UhidDualSense {
 
 impl UhidDualSense {
     pub fn new(id: u64) -> anyhow::Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(libc::O_CLOEXEC)
-            .open("/dev/uhid")
-            .context("opening /dev/uhid")?;
-
-        let phys = format!("veil/gamepad{id}");
-        let mut ev = event(UHID_CREATE2);
-        put_str(&mut ev[4..132], DEVICE_NAME);
-        put_str(&mut ev[132..196], &phys);
-        ev[260..262].copy_from_slice(&(REPORT_DESCRIPTOR.len() as u16).to_ne_bytes());
-        ev[262..264].copy_from_slice(&BUS_USB.to_ne_bytes());
-        ev[264..268].copy_from_slice(&VENDOR.to_ne_bytes());
-        ev[268..272].copy_from_slice(&PRODUCT.to_ne_bytes());
-        ev[272..276].copy_from_slice(&0x0100_u32.to_ne_bytes()); // bcdDevice
-        ev[280..280 + REPORT_DESCRIPTOR.len()].copy_from_slice(REPORT_DESCRIPTOR);
-        (&file).write_all(&ev).context("UHID_CREATE2")?;
-
-        let file = Arc::new(file);
         let shared = Arc::new(Mutex::new(Shared {
             state: GamepadState::default(),
             seq: 0,
             started: Instant::now(),
         }));
-        let stop = Arc::new(AtomicBool::new(false));
         let (rumble_tx, rumble) = mpsc::channel();
 
-        let thread = {
-            let (file, shared, stop) = (file.clone(), shared.clone(), stop.clone());
-            std::thread::Builder::new()
-                .name(format!("dualsense {id}"))
-                .spawn(move || device_thread(id, &file, &shared, &stop, rumble_tx))?
+        let device = {
+            let shared = shared.clone();
+            let mut started = false;
+            let mut last_motors = (0u8, 0u8);
+            uhid::Device::new(
+                &uhid::DeviceInfo {
+                    name: DEVICE_NAME,
+                    phys: &format!("veil/gamepad{id}"),
+                    uniq: "",
+                    bus: uhid::BUS_USB,
+                    vendor: VENDOR,
+                    product: PRODUCT,
+                    version: 0x0100, // bcdDevice
+                    report_descriptor: REPORT_DESCRIPTOR,
+                },
+                format!("dualsense {id}"),
+                Some(REPORT_INTERVAL),
+                // Answer the driver: feature report requests, output reports
+                // (rumble), and keep input reports flowing.
+                move |writer, event| match event {
+                    uhid::Event::Start => {
+                        debug!(id, "dualsense: driver started");
+                        started = true;
+                    }
+                    uhid::Event::Stop => {
+                        debug!(id, "dualsense: driver stopped");
+                        started = false;
+                    }
+                    uhid::Event::Tick if started => {
+                        if let Err(e) = write_input_report(writer, &mut shared.lock().unwrap()) {
+                            debug!(id, "dualsense uhid write error: {e}");
+                        }
+                    }
+                    uhid::Event::Tick => {}
+                    uhid::Event::GetReport { id: req, report_number, .. } => {
+                        let reply = feature_report(id, report_number);
+                        if reply.is_none() {
+                            debug!(id, report_number, "dualsense: unknown feature report requested");
+                        }
+                        let result = reply.as_deref().ok_or(libc::EIO as u16);
+                        if let Err(e) = writer.get_report_reply(req, result) {
+                            warn!(id, "UHID_GET_REPORT_REPLY failed: {e}");
+                        }
+                    }
+                    uhid::Event::SetReport { id: req, report_number, .. } => {
+                        // Accept and ignore (e.g. Steam setting the lightbar this way).
+                        trace!(id, report_number, "dualsense: set report");
+                        if let Err(e) = writer.set_report_reply(req, 0) {
+                            warn!(id, "UHID_SET_REPORT_REPLY failed: {e}");
+                        }
+                    }
+                    uhid::Event::Output { data, .. } => {
+                        trace!(id, report = ?&data[..data.len().min(48)], "dualsense: output report");
+                        if let Some(motors) = output_report_motors(&data) {
+                            if motors != last_motors {
+                                last_motors = motors;
+                                let _ = rumble_tx.send(motors_to_rumble(motors));
+                            }
+                        }
+                    }
+                },
+            )?
         };
 
         let mac = mac_address(id);
         let uniq = mac.iter().rev().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
 
         info!(id, mac = uniq, "virtual DualSense plugged (/dev/uhid)");
-        Ok(Self { file, shared, stop, thread: Some(thread), rumble, uniq })
+        Ok(Self { device, shared, rumble, uniq })
     }
 
     /// Report a new state.
     pub fn set_state(&self, state: GamepadState) {
         let mut shared = self.shared.lock().unwrap();
         shared.state = state;
-        if let Err(e) = write_input_report(&self.file, &mut shared) {
+        if let Err(e) = write_input_report(self.device.writer(), &mut shared) {
             warn!("dualsense uhid write error: {e}");
         }
     }
@@ -173,114 +183,6 @@ impl UhidDualSense {
     /// The gamepad's evdev node, once hid-playstation has created it.
     pub fn evdev_path(&self) -> Option<String> {
         find_evdev("uniq", &self.uniq, DEVICE_NAME)
-    }
-}
-
-impl Drop for UhidDualSense {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-        if let Err(e) = (&*self.file).write_all(&event(UHID_DESTROY)) {
-            warn!("failed to destroy virtual DualSense: {e}");
-        }
-    }
-}
-
-/// Answer the driver: feature report requests, output reports (rumble), and
-/// keep input reports flowing.
-fn device_thread(
-    id: u64,
-    file: &File,
-    shared: &Mutex<Shared>,
-    stop: &AtomicBool,
-    rumble_tx: mpsc::Sender<Rumble>,
-) {
-    let mut buf = vec![0u8; EVENT_SIZE];
-    let mut started = false;
-    let mut last_motors = (0u8, 0u8);
-    let mut last_report = Instant::now();
-
-    while !stop.load(Ordering::Relaxed) {
-        let mut pfd = libc::pollfd { fd: file.as_raw_fd(), events: libc::POLLIN, revents: 0 };
-        let ready = unsafe { libc::poll(&mut pfd, 1, REPORT_INTERVAL.as_millis() as i32) };
-
-        if started && last_report.elapsed() >= REPORT_INTERVAL {
-            if let Err(e) = write_input_report(file, &mut shared.lock().unwrap()) {
-                debug!(id, "dualsense uhid write error: {e}");
-            }
-            last_report = Instant::now();
-        }
-        if ready <= 0 || pfd.revents & libc::POLLIN == 0 {
-            continue;
-        }
-
-        let n = match (&*file).read(&mut buf) {
-            Ok(n) => n,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => {
-                warn!(id, "dualsense uhid read error: {e}");
-                break;
-            }
-        };
-        if n < 4 {
-            continue;
-        }
-
-        match u32::from_ne_bytes(buf[0..4].try_into().unwrap()) {
-            UHID_START => {
-                debug!(id, "dualsense: driver started");
-                started = true;
-            }
-            UHID_STOP => {
-                debug!(id, "dualsense: driver stopped");
-                started = false;
-            }
-            UHID_OPEN | UHID_CLOSE => {}
-            UHID_GET_REPORT => {
-                let req_id = u32::from_ne_bytes(buf[4..8].try_into().unwrap());
-                let rnum = buf[8];
-                let reply = feature_report(id, rnum);
-                if reply.is_none() {
-                    debug!(id, rnum, "dualsense: unknown feature report requested");
-                }
-                let mut ev = event(UHID_GET_REPORT_REPLY);
-                ev[4..8].copy_from_slice(&req_id.to_ne_bytes());
-                match reply {
-                    Some(data) => {
-                        ev[10..12].copy_from_slice(&(data.len() as u16).to_ne_bytes());
-                        ev[12..12 + data.len()].copy_from_slice(&data);
-                    }
-                    None => ev[8..10].copy_from_slice(&(libc::EIO as u16).to_ne_bytes()),
-                }
-                if let Err(e) = (&*file).write_all(&ev) {
-                    warn!(id, "UHID_GET_REPORT_REPLY failed: {e}");
-                }
-            }
-            UHID_SET_REPORT => {
-                // Accept and ignore (e.g. Steam setting the lightbar this way).
-                let req_id = u32::from_ne_bytes(buf[4..8].try_into().unwrap());
-                trace!(id, rnum = buf[8], "dualsense: set report");
-                let mut ev = event(UHID_SET_REPORT_REPLY);
-                ev[4..8].copy_from_slice(&req_id.to_ne_bytes());
-                if let Err(e) = (&*file).write_all(&ev) {
-                    warn!(id, "UHID_SET_REPORT_REPLY failed: {e}");
-                }
-            }
-            UHID_OUTPUT => {
-                let size = u16::from_ne_bytes(buf[4 + UHID_DATA_MAX..4 + UHID_DATA_MAX + 2].try_into().unwrap());
-                let data = &buf[4..4 + (size as usize).min(UHID_DATA_MAX)];
-                trace!(id, report = ?&data[..data.len().min(48)], "dualsense: output report");
-                if let Some(motors) = output_report_motors(data) {
-                    if motors != last_motors {
-                        last_motors = motors;
-                        let _ = rumble_tx.send(motors_to_rumble(motors));
-                    }
-                }
-            }
-            other => trace!(id, event = other, "dualsense: uhid event"),
-        }
     }
 }
 
@@ -358,16 +260,13 @@ fn mac_address(id: u64) -> [u8; 6] {
 }
 
 /// Write the current state as USB input report 1.
-fn write_input_report(file: &File, shared: &mut Shared) -> std::io::Result<()> {
+fn write_input_report(writer: &uhid::Writer, shared: &mut Shared) -> std::io::Result<()> {
     shared.seq = shared.seq.wrapping_add(1);
     // Sensor timestamps count in units of 1/3 µs.
     let timestamp = (shared.started.elapsed().as_micros() as u64 * 3) as u32;
     let report = input_report(&shared.state, shared.seq, timestamp);
 
-    let mut ev = event(UHID_INPUT2);
-    ev[4..6].copy_from_slice(&(report.len() as u16).to_ne_bytes());
-    ev[6..6 + report.len()].copy_from_slice(&report);
-    (&*file).write_all(&ev)
+    writer.input(&report)
 }
 
 /// Build USB input report 1 from a W3C standard-layout state.
@@ -431,18 +330,6 @@ fn hat(up: bool, down: bool, left: bool, right: bool) -> u8 {
         (-1, -1) => 7,
         _ => 8,
     }
-}
-
-fn event(kind: u32) -> Vec<u8> {
-    let mut ev = vec![0u8; EVENT_SIZE];
-    ev[0..4].copy_from_slice(&kind.to_ne_bytes());
-    ev
-}
-
-/// Copy a string into a fixed, NUL-terminated field.
-fn put_str(field: &mut [u8], s: &str) {
-    let n = s.len().min(field.len() - 1);
-    field[..n].copy_from_slice(&s.as_bytes()[..n]);
 }
 
 /// The evdev node whose input device has this name and `attr` (e.g. phys).

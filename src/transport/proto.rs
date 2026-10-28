@@ -79,6 +79,24 @@ pub const MSG_GAMEPAD_RUMBLE: u8 = 0x1B;
 /// This viewer's network and the stream's adaptation, JSON
 /// [`NetworkStatus`](crate::transport::session::NetworkStatus), every second.
 pub const MSG_NETWORK: u8 = 0x1C;
+/// Do something on a passed-through HID device:
+/// `[handle][kind][request:u32][report_number][data...]` (big-endian), kind
+/// 0 = send output report, 1 = read feature report (reply with 0x43),
+/// 2 = write feature report (reply), 3 = write output report (reply).
+pub const MSG_HID_REQUEST: u8 = 0x1D;
+/// Whether a HID passthrough opened, JSON
+/// [`Status`](crate::transport::hid::Status).
+pub const MSG_HID_STATUS: u8 = 0x1E;
+
+// ─── Client → server streams (HID passthrough) ──────────────────────────────
+
+/// Pass a device through, JSON [`OpenRequest`](crate::transport::hid::OpenRequest).
+pub const HID_OPEN: u8 = 0x40;
+/// Stop passing a device through: `[handle]`.
+pub const HID_CLOSE: u8 = 0x41;
+/// Answer a 0x1D request: `[handle][kind][request:u32][status][data...]`,
+/// echoing its kind and request; status 0 for success, otherwise an errno.
+pub const HID_REPLY: u8 = 0x43;
 
 // ─── Frame type flags ───────────────────────────────────────────────────────
 
@@ -122,6 +140,9 @@ pub const INPUT_GAMEPAD_STATE: u8 = 0x31;
 /// [`DecodeCaps`](crate::transport::adapt::DecodeCaps); sent on connect, on
 /// change and every few seconds. Handled by the transport.
 pub const INPUT_DECODE_CAPS: u8 = 0x32;
+/// An input report from a passed-through HID device (datagram):
+/// `[handle][report...]`, the report starting with its ID if it has one.
+pub const INPUT_HID_REPORT: u8 = 0x42;
 
 // ─── Encoding helpers ───────────────────────────────────────────────────────
 
@@ -223,6 +244,26 @@ pub fn encode_ctrl_pointer_release() -> Bytes {
 }
 
 /// Rumble for one of the recipient's pads.
+/// A request for the browser to perform on a passed-through HID device.
+pub fn encode_hid_request(msg: &crate::transport::hid::ToClient) -> Bytes {
+    use crate::transport::hid::ToClient;
+    let (handle, kind, request, report_number, data): (u8, u8, u32, u8, &[u8]) = match msg {
+        ToClient::Output { handle, data } => (*handle, 0, 0, 0, data),
+        ToClient::GetFeature { handle, request, report_number } => (*handle, 1, *request, *report_number, &[]),
+        ToClient::SetReport { handle, request, report_number, feature, data } => {
+            (*handle, if *feature { 2 } else { 3 }, *request, *report_number, data)
+        }
+    };
+    let mut b = BytesMut::with_capacity(8 + data.len());
+    b.put_u8(MSG_HID_REQUEST);
+    b.put_u8(handle);
+    b.put_u8(kind);
+    b.put_u32(request);
+    b.put_u8(report_number);
+    b.put_slice(data);
+    b.freeze()
+}
+
 pub fn encode_gamepad_rumble(index: u8, strong: u16, weak: u16, duration_ms: u16) -> Bytes {
     let mut b = BytesMut::with_capacity(8);
     b.put_u8(MSG_GAMEPAD_RUMBLE);

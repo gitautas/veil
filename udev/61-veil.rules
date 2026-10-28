@@ -3,6 +3,7 @@
 #   sudo cp udev/61-veil.rules /etc/udev/rules.d/
 #   sudo udevadm control --reload
 #   sudo modprobe uhid uinput
+#   sudo udevadm trigger --subsystem-match=hidraw
 # (Loading the modules makes udev apply the rules now; after a reboot,
 # static_node sets the permissions before the modules are loaded.)
 
@@ -13,7 +14,9 @@ KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="stati
 # driver binds to them like a real pad.
 KERNEL=="uhid", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uhid"
 
-# Steam and SDL read DualSense pads (including Veil's virtual ones) through
-# hidraw. Steam's own rules only grant that to the active desktop session,
-# which a headless Steam may not be.
-KERNEL=="hidraw*", KERNELS=="0003:054C:0CE6.*", GROUP="input", MODE="0660"
+# Steam and SDL drive DualSense pads (and many other controllers) through
+# hidraw, and fall back to evdev with wrong mappings when they can't. Grant
+# hidraw for every device Veil creates through uhid (emulated pads and
+# passed-through devices, on any bus). Steam's own rules only grant real pads
+# to the active desktop session, which a headless Steam may not be.
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", KERNELS=="uhid", GROUP="input", MODE="0660"
