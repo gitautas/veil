@@ -563,6 +563,8 @@ var VeilClient = class {
     this.ctx2d = null;
     this.statsInterval = null;
     this.gamepadInterval = null;
+    /** Keyboard Lock holds Escape (only active while fullscreen). */
+    this.escapeLocked = false;
     /** Re-sends decode support and watches for the decoder falling behind. */
     this.decodeInterval = null;
     this.decodeSupport = null;
@@ -1197,7 +1199,8 @@ var VeilClient = class {
    * Lock the browser's pointer to the stream. The cursor then moves
    * absolutely within the stream (draw it yourself; see `getCursorPosition`),
    * or sends relative motion while the app has locked the pointer. Must be
-   * called from a user gesture (click or key press). Esc always releases.
+   * called from a user gesture (click or key press). Browsers release it on
+   * Esc, except in fullscreen with Escape locked (see `enterFullscreen`).
    */
   captureMouse() {
     if (!this.canvas || this.isMouseCaptured()) return;
@@ -1216,6 +1219,40 @@ var VeilClient = class {
   }
   releaseMouse() {
     if (this.isMouseCaptured()) document.exitPointerLock();
+  }
+  /**
+   * Show `element` (the canvas by default; pass a wrapper to keep overlays)
+   * fullscreen, and ask the browser to pass Escape to the page (Keyboard
+   * Lock), so Esc reaches the app instead of releasing the mouse; holding Esc
+   * still leaves fullscreen. Must be called from a user gesture. Resolves to
+   * whether Escape was locked: browsers without Keyboard Lock still release
+   * on Esc.
+   */
+  async enterFullscreen(element = this.canvas) {
+    if (!element) throw new Error("No element to show fullscreen");
+    if (document.fullscreenElement !== element) {
+      await element.requestFullscreen({ navigationUI: "hide" });
+    }
+    try {
+      await navigator.keyboard.lock(["Escape"]);
+      this.escapeLocked = true;
+    } catch (err) {
+      this.log("Escape not locked; Esc will release the mouse:", err instanceof Error ? err.message : err);
+      this.escapeLocked = false;
+    }
+    return this.escapeLocked;
+  }
+  async exitFullscreen() {
+    try {
+      navigator.keyboard.unlock();
+    } catch {
+    }
+    this.escapeLocked = false;
+    if (document.fullscreenElement) await document.exitFullscreen();
+  }
+  /** Whether Esc goes to the app (fullscreen with Escape locked). */
+  get escapeGoesToApp() {
+    return this.escapeLocked && document.fullscreenElement !== null;
   }
   isMouseCaptured() {
     return !!this.canvas && document.pointerLockElement === this.canvas;
@@ -1636,6 +1673,7 @@ var canvas = $("stream-canvas");
 var canvasWrap = canvas.parentElement;
 var vcursor = $("vcursor");
 var captureBadge = $("captureBadge");
+var fullscreenBtn = $("fullscreenBtn");
 var overlay = $("overlay");
 var overlayStatus = $("overlay-status");
 var panelToggle = $("panelToggle");
@@ -2522,7 +2560,18 @@ var cursorHotspot = { x: 1, y: 1 };
 var cursorHidden = false;
 var captureState = { captured: false, relative: false, appWantsLock: false };
 var badgeTimer = null;
-var RELEASE_HINT = "<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd> or <kbd>Esc</kbd> to release";
+var IS_MAC = /mac/i.test(
+  navigator.userAgentData?.platform || navigator.userAgent
+);
+function combo(key) {
+  return IS_MAC ? `<kbd title="Control+Option+${key}">\u2303</kbd><kbd>\u2325</kbd><kbd>${key}</kbd>` : `<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>${key}</kbd>`;
+}
+function releaseHint() {
+  if (!document.fullscreenElement) {
+    return `${combo("M")} to release \xB7 ${combo("F")} for fullscreen, where Esc goes to the app`;
+  }
+  return client?.escapeGoesToApp ? `${combo("M")} to release \xB7 Esc goes to the app (hold Esc to leave fullscreen)` : `${combo("M")} or Esc to release (this browser won't pass Esc to the app)`;
+}
 function showBadge(html, opts = {}) {
   captureBadge.innerHTML = html;
   captureBadge.classList.toggle("want", !!opts.want);
@@ -2535,13 +2584,17 @@ function onMouseCapture(state) {
   captureState = state;
   if (state.captured) {
     if (!was.captured || was.relative !== state.relative) {
-      showBadge(state.relative ? `<b>Mouse captured</b> \xB7 relative (app has locked the pointer) \u2014 ${RELEASE_HINT}` : `<b>Mouse captured</b> \xB7 absolute \u2014 ${RELEASE_HINT}`);
+      showBadge(state.relative ? `<b>Mouse captured</b> \xB7 relative (app has locked the pointer) \u2014 ${releaseHint()}` : `<b>Mouse captured</b> \xB7 absolute \u2014 ${releaseHint()}`);
     }
   } else if (state.appWantsLock) {
-    showBadge("<b>The app wants the mouse</b> \u2014 click the stream or press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd>", { sticky: true, want: true });
+    showBadge(
+      `<b>The app wants the mouse</b> \u2014 click the stream or press ${combo("M")}`,
+      { sticky: true, want: true }
+    );
   } else if (was.captured || was.appWantsLock) {
-    showBadge("Mouse released \u2014 click the stream or press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd> to capture");
+    showBadge(`Mouse released \u2014 click the stream or press ${combo("M")} to capture`);
   }
+  canvasWrap.classList.toggle("captured", state.captured);
 }
 function renderCursor() {
   const show = !!client && captureState.captured && !captureState.relative && !cursorHidden;
@@ -2561,13 +2614,39 @@ function renderCursor() {
 document.addEventListener("pointerlockerror", () => {
   showBadge("<b>Couldn\u2019t capture the mouse</b> \u2014 the browser refused (is this window focused?)", { want: true });
 });
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) {
+      await (client ? client.exitFullscreen() : document.exitFullscreen());
+    } else if (client) {
+      const escLocked = await client.enterFullscreen(canvasWrap);
+      showBadge(escLocked ? `<b>Fullscreen</b> \u2014 Esc goes to the app \xB7 click the stream to capture the mouse \xB7 hold Esc to leave` : `<b>Fullscreen</b> \u2014 this browser won't pass Esc to the app, so Esc releases the mouse`);
+    } else {
+      await canvasWrap.requestFullscreen();
+    }
+  } catch (err) {
+    showBadge(`<b>Couldn't go fullscreen</b> \u2014 ${err instanceof Error ? err.message : err}`, { want: true });
+  }
+}
+fullscreenBtn.title = `Fullscreen (${IS_MAC ? "\u2303\u2325F" : "Ctrl+Alt+F"}): Esc goes to the app, and holding Esc leaves`;
+fullscreenBtn.addEventListener("click", () => void toggleFullscreen());
+document.addEventListener("fullscreenchange", () => {
+  const full = document.fullscreenElement !== null;
+  fullscreenBtn.textContent = full ? "\u26F6 Exit fullscreen" : "\u26F6 Fullscreen";
+  if (!full) void client?.exitFullscreen();
+});
 document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && e.code === "KeyM") {
+  if (!e.ctrlKey || !e.altKey || e.shiftKey || e.metaKey) return;
+  if (e.code === "KeyM") {
     e.preventDefault();
     e.stopPropagation();
     if (!client) return;
     if (client.isMouseCaptured()) client.releaseMouse();
     else client.captureMouse();
+  } else if (e.code === "KeyF") {
+    e.preventDefault();
+    e.stopPropagation();
+    void toggleFullscreen();
   }
 }, { capture: true });
 var STATE_LABEL = {

@@ -135,6 +135,8 @@ export class VeilClient {
 
   private statsInterval: ReturnType<typeof setInterval> | null = null;
   private gamepadInterval: ReturnType<typeof setInterval> | null = null;
+  /** Keyboard Lock holds Escape (only active while fullscreen). */
+  private escapeLocked = false;
   /** Re-sends decode support and watches for the decoder falling behind. */
   private decodeInterval: ReturnType<typeof setInterval> | null = null;
   private decodeSupport: DecodeSupport | null = null;
@@ -892,7 +894,8 @@ export class VeilClient {
    * Lock the browser's pointer to the stream. The cursor then moves
    * absolutely within the stream (draw it yourself; see `getCursorPosition`),
    * or sends relative motion while the app has locked the pointer. Must be
-   * called from a user gesture (click or key press). Esc always releases.
+   * called from a user gesture (click or key press). Browsers release it on
+   * Esc, except in fullscreen with Escape locked (see `enterFullscreen`).
    */
   captureMouse(): void {
     if (!this.canvas || this.isMouseCaptured()) return;
@@ -915,6 +918,43 @@ export class VeilClient {
 
   releaseMouse(): void {
     if (this.isMouseCaptured()) document.exitPointerLock();
+  }
+
+  /**
+   * Show `element` (the canvas by default; pass a wrapper to keep overlays)
+   * fullscreen, and ask the browser to pass Escape to the page (Keyboard
+   * Lock), so Esc reaches the app instead of releasing the mouse; holding Esc
+   * still leaves fullscreen. Must be called from a user gesture. Resolves to
+   * whether Escape was locked: browsers without Keyboard Lock still release
+   * on Esc.
+   */
+  async enterFullscreen(element: HTMLElement | null = this.canvas): Promise<boolean> {
+    if (!element) throw new Error('No element to show fullscreen');
+    if (document.fullscreenElement !== element) {
+      await element.requestFullscreen({ navigationUI: 'hide' });
+    }
+    try {
+      await (navigator as Navigator & { keyboard: { lock(keys?: string[]): Promise<void> } })
+        .keyboard.lock(['Escape']);
+      this.escapeLocked = true;
+    } catch (err) {
+      this.log('Escape not locked; Esc will release the mouse:', err instanceof Error ? err.message : err);
+      this.escapeLocked = false;
+    }
+    return this.escapeLocked;
+  }
+
+  async exitFullscreen(): Promise<void> {
+    try {
+      (navigator as Navigator & { keyboard: { unlock(): void } }).keyboard.unlock();
+    } catch { /* never locked */ }
+    this.escapeLocked = false;
+    if (document.fullscreenElement) await document.exitFullscreen();
+  }
+
+  /** Whether Esc goes to the app (fullscreen with Escape locked). */
+  get escapeGoesToApp(): boolean {
+    return this.escapeLocked && document.fullscreenElement !== null;
   }
 
   isMouseCaptured(): boolean {

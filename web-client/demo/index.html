@@ -70,6 +70,22 @@
       background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
     }
     #captureBadge.want { border-color: rgba(250,204,21,0.5); }
+    #captureBadge kbd + kbd { margin-left: 2px; }
+
+    .canvas-wrap:fullscreen { background: #000; }
+    #fullscreenBtn {
+      position: absolute; top: 10px; left: 10px; z-index: 30;
+      padding: 4px 9px;
+      background: rgba(10,10,16,0.75);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--dim);
+      font-size: 0.68rem;
+      cursor: pointer;
+    }
+    #fullscreenBtn:hover { color: #fff; }
+    /* Out of the way while playing fullscreen. */
+    .canvas-wrap.captured:fullscreen #fullscreenBtn { display: none; }
 
     /* ── Disconnected overlay ────────────────────────────── */
     #overlay {
@@ -401,6 +417,7 @@
   <img id="vcursor" alt="">
   <button id="soundOverlay" title="Browsers need a click before playing sound">🔇 Click to enable sound</button>
   <div id="captureBadge"></div>
+  <button id="fullscreenBtn">⛶ Fullscreen</button>
 
   <div id="overlay">
     <svg class="overlay-icon" width="54" height="54" fill="none" stroke="currentColor" viewBox="0 0 24 24">

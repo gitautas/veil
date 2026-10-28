@@ -23,6 +23,7 @@ const canvas        = $<HTMLCanvasElement>('stream-canvas');
 const canvasWrap    = canvas.parentElement as HTMLDivElement;
 const vcursor       = $<HTMLImageElement>('vcursor');
 const captureBadge  = $<HTMLDivElement>('captureBadge');
+const fullscreenBtn = $<HTMLButtonElement>('fullscreenBtn');
 const overlay       = $<HTMLDivElement>('overlay');
 const overlayStatus = $<HTMLSpanElement>('overlay-status');
 const panelToggle   = $<HTMLButtonElement>('panelToggle');
@@ -1064,7 +1065,27 @@ let cursorHidden = false;
 let captureState = { captured: false, relative: false, appWantsLock: false };
 let badgeTimer: ReturnType<typeof setTimeout> | null = null;
 
-const RELEASE_HINT = '<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd> or <kbd>Esc</kbd> to release';
+/** macOS shows Control+Option, not Ctrl+Alt (the same keys). */
+const IS_MAC = /mac/i.test(
+  (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
+  || navigator.userAgent);
+
+/** The Ctrl+Alt+`key` shortcut, as this OS writes it. */
+function combo(key: string): string {
+  return IS_MAC
+    ? `<kbd title="Control+Option+${key}">⌃</kbd><kbd>⌥</kbd><kbd>${key}</kbd>`
+    : `<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>${key}</kbd>`;
+}
+
+/** How to release the mouse, and what Esc does, right now. */
+function releaseHint(): string {
+  if (!document.fullscreenElement) {
+    return `${combo('M')} to release · ${combo('F')} for fullscreen, where Esc goes to the app`;
+  }
+  return client?.escapeGoesToApp
+    ? `${combo('M')} to release · Esc goes to the app (hold Esc to leave fullscreen)`
+    : `${combo('M')} or Esc to release (this browser won't pass Esc to the app)`;
+}
 
 function showBadge(html: string, opts: { sticky?: boolean; want?: boolean } = {}) {
   captureBadge.innerHTML = html;
@@ -1080,15 +1101,16 @@ function onMouseCapture(state: { captured: boolean; relative: boolean; appWantsL
   if (state.captured) {
     if (!was.captured || was.relative !== state.relative) {
       showBadge(state.relative
-        ? `<b>Mouse captured</b> · relative (app has locked the pointer) — ${RELEASE_HINT}`
-        : `<b>Mouse captured</b> · absolute — ${RELEASE_HINT}`);
+        ? `<b>Mouse captured</b> · relative (app has locked the pointer) — ${releaseHint()}`
+        : `<b>Mouse captured</b> · absolute — ${releaseHint()}`);
     }
   } else if (state.appWantsLock) {
-    showBadge('<b>The app wants the mouse</b> — click the stream or press ' +
-              '<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd>', { sticky: true, want: true });
+    showBadge(`<b>The app wants the mouse</b> — click the stream or press ${combo('M')}`,
+              { sticky: true, want: true });
   } else if (was.captured || was.appWantsLock) {
-    showBadge('Mouse released — click the stream or press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd> to capture');
+    showBadge(`Mouse released — click the stream or press ${combo('M')} to capture`);
   }
+  canvasWrap.classList.toggle('captured', state.captured);
 }
 
 /** Draw the app's cursor at the virtual position while captured and absolute. */
@@ -1112,15 +1134,48 @@ document.addEventListener('pointerlockerror', () => {
   showBadge('<b>Couldn’t capture the mouse</b> — the browser refused (is this window focused?)', { want: true });
 });
 
-// Ctrl+Alt+M toggles capture. Handled before the SDK's key handler, so the M
-// isn't sent to the app.
+/** Fullscreen the stream, where Esc goes to the app (if the browser allows). */
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) {
+      await (client ? client.exitFullscreen() : document.exitFullscreen());
+    } else if (client) {
+      const escLocked = await client.enterFullscreen(canvasWrap);
+      showBadge(escLocked
+        ? `<b>Fullscreen</b> — Esc goes to the app · click the stream to capture the mouse · hold Esc to leave`
+        : `<b>Fullscreen</b> — this browser won't pass Esc to the app, so Esc releases the mouse`);
+    } else {
+      await canvasWrap.requestFullscreen();
+    }
+  } catch (err) {
+    showBadge(`<b>Couldn't go fullscreen</b> — ${err instanceof Error ? err.message : err}`, { want: true });
+  }
+}
+
+fullscreenBtn.title = `Fullscreen (${IS_MAC ? '⌃⌥F' : 'Ctrl+Alt+F'}): Esc goes to the app, and holding Esc leaves`;
+fullscreenBtn.addEventListener('click', () => void toggleFullscreen());
+document.addEventListener('fullscreenchange', () => {
+  const full = document.fullscreenElement !== null;
+  fullscreenBtn.textContent = full ? '⛶ Exit fullscreen' : '⛶ Fullscreen';
+  // Left with a long Esc press: let go of the keyboard too.
+  if (!full) void client?.exitFullscreen();
+});
+
+// Ctrl+Alt+M toggles capture and Ctrl+Alt+F fullscreen (Control+Option on a
+// Mac). Handled before the SDK's key handler, so the keys aren't sent to the
+// app.
 document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && e.code === 'KeyM') {
+  if (!e.ctrlKey || !e.altKey || e.shiftKey || e.metaKey) return;
+  if (e.code === 'KeyM') {
     e.preventDefault();
     e.stopPropagation();
     if (!client) return;
     if (client.isMouseCaptured()) client.releaseMouse();
     else client.captureMouse();
+  } else if (e.code === 'KeyF') {
+    e.preventDefault();
+    e.stopPropagation();
+    void toggleFullscreen();
   }
 }, { capture: true });
 
