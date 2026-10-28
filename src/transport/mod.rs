@@ -16,7 +16,10 @@
 
 pub mod proto;
 mod session;
+mod adapt;
 mod viewers;
+
+pub use adapt::auto_codec_enabled;
 
 use std::net::SocketAddr;
 
@@ -44,6 +47,8 @@ pub struct TransportServer {
     identity: Identity,
     cert_fingerprint: String,
     video_params: VideoStreamParams,
+    /// Start with the codec picked from what viewers decode.
+    auto_codec: bool,
 }
 
 impl TransportServer {
@@ -57,6 +62,7 @@ impl TransportServer {
     pub fn new(
         quic_addr: SocketAddr,
         video_params: VideoStreamParams,
+        auto_codec: bool,
     ) -> Result<Self> {
         let http_port = quic_addr.port().saturating_add(1);
         let http_addr = SocketAddr::new(quic_addr.ip(), http_port);
@@ -96,6 +102,7 @@ impl TransportServer {
             identity,
             cert_fingerprint,
             video_params,
+            auto_codec,
         })
     }
 
@@ -174,6 +181,7 @@ impl TransportServer {
         // Refresh the viewer list now and then, so durations and "controlling"
         // stay current. The task ends with the runtime.
         let viewers = viewers::Viewers::new(events_tx.clone());
+        let adapt = std::sync::Arc::new(adapt::Adaptation::new(self.auto_codec));
         {
             let viewers = viewers.clone();
             tokio::spawn(async move {
@@ -201,6 +209,7 @@ impl TransportServer {
             // for the control channel to become available.
             let ctrl_rx_clone = ctrl_rx.clone();
             let viewers = viewers.clone();
+            let adapt = adapt.clone();
 
             tokio::spawn(async move {
                 // Await the incoming session request.
@@ -228,6 +237,7 @@ impl TransportServer {
                     ctrl_rx: ctrl_rx_clone,
                     viewers: viewers.clone(),
                     viewer,
+                    adapt,
                 };
 
                 if let Err(e) = session::run_client_session(conn, cfg).await {

@@ -145,6 +145,9 @@ impl EncodeStats {
             bytes: w.bytes,
             encode_ms_avg: if w.frames > 0 { ms(w.encode_total) / w.frames as f64 } else { 0.0 },
             encode_ms_max: ms(w.encode_max),
+            target_bitrate: None,
+            preset_bitrate: None,
+            bitrate_limit: None,
         }
     }
 }

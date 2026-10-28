@@ -28,6 +28,9 @@ import {
   ViewerList,
   VideoCodecName,
   GamepadType,
+  DecodeLevel,
+  DecodeSupport,
+  NetworkStatus,
 } from './types';
 import {
   DEFAULT_SERVER_URL,
@@ -63,6 +66,10 @@ import {
   INPUT_SCROLL,
   INPUT_GAMEPAD_STATE,
   MSG_GAMEPAD_RUMBLE,
+  MSG_NETWORK,
+  INPUT_DECODE_CAPS,
+  H265_CODEC_STRING,
+  AV1_CODEC_STRING,
   INPUT_REQ_KEYFRAME,
   INPUT_POINTER_ENTER,
   INPUT_POINTER_LEAVE,
@@ -128,6 +135,14 @@ export class VeilClient {
 
   private statsInterval: ReturnType<typeof setInterval> | null = null;
   private gamepadInterval: ReturnType<typeof setInterval> | null = null;
+  /** Re-sends decode support and watches for the decoder falling behind. */
+  private decodeInterval: ReturnType<typeof setInterval> | null = null;
+  private decodeSupport: DecodeSupport | null = null;
+  /** The stream size decode support was probed at. */
+  private decodeProbedFor = '';
+  /** Consecutive seconds the decoder has had a backlog. */
+  private decodeBacklogSecs = 0;
+  private decodeTicks = 0;
   // Stores a deep snapshot of button/axis state (NOT a Gamepad reference).
   // Chrome returns the same live Gamepad object on every getGamepads() call,
   // so storing the object reference and comparing against it would always
@@ -273,6 +288,7 @@ export class VeilClient {
 
       // ── Stats collection ─────────────────────────────────────────────────
       this.statsInterval = setInterval(() => this.emitStats(), STATS_UPDATE_INTERVAL);
+      this.decodeInterval = setInterval(() => this.decodeTick(), 1000);
 
       // ── Detect transport close ───────────────────────────────────────────
       this.transport.closed.then(() => {
@@ -353,6 +369,68 @@ export class VeilClient {
   setGamepadType(index: number, type: GamepadType): void {
     if (type === 'auto') this.gamepadTypes.delete(index);
     else this.gamepadTypes.set(index, type);
+  }
+
+  /** What this browser decodes, as last reported to the server. */
+  getDecodeSupport(): DecodeSupport | null {
+    return this.decodeSupport;
+  }
+
+  /**
+   * Find out which codecs this browser decodes at the stream's size, and in
+   * hardware or software, and tell the server (its Auto codec uses this).
+   */
+  private async probeDecodeSupport(width: number, height: number): Promise<void> {
+    const key = `${width}x${height}`;
+    this.decodeProbedFor = key;
+    const level = async (codec: string): Promise<DecodeLevel> => {
+      if (typeof VideoDecoder === 'undefined') return 'none';
+      for (const [accel, result] of [['prefer-hardware', 'hardware'], ['prefer-software', 'software']] as const) {
+        try {
+          const r = await VideoDecoder.isConfigSupported({
+            codec, codedWidth: width, codedHeight: height, hardwareAcceleration: accel, optimizeForLatency: true,
+          });
+          if (r.supported) return result;
+        } catch { /* unsupported */ }
+      }
+      return 'none';
+    };
+    const [h264, h265, av1] = await Promise.all([
+      level(h264CodecString(66, 51)), level(H265_CODEC_STRING), level(AV1_CODEC_STRING),
+    ]);
+    if (this.decodeProbedFor !== key) return; // superseded
+    this.decodeSupport = { h264, h265, av1, struggling: this.decodeSupport?.struggling ?? [] };
+    this.log('Decode support:', this.decodeSupport);
+    this.emit('decodesupport', this.decodeSupport);
+    this.sendDecodeSupport();
+  }
+
+  private sendDecodeSupport(): void {
+    if (!this.decodeSupport) return;
+    const json = new TextEncoder().encode(JSON.stringify(this.decodeSupport));
+    const buf = new Uint8Array(1 + json.length);
+    buf[0] = INPUT_DECODE_CAPS;
+    buf.set(json, 1);
+    this.sendDatagram(buf);
+  }
+
+  /**
+   * Every second: if the decoder has had a backlog for a few seconds, mark
+   * the codec as one this browser can't keep up with; and every few seconds,
+   * re-send decode support, since datagrams can be lost.
+   */
+  private decodeTick(): void {
+    const queued = this.videoDecoder?.decodeQueueSize ?? 0;
+    this.decodeBacklogSecs = queued >= DECODE_BACKLOG_FRAMES ? this.decodeBacklogSecs + 1 : 0;
+    if (this.decodeSupport && this.decodeBacklogSecs >= DECODE_BACKLOG_SECS
+        && !this.decodeSupport.struggling.includes(this.serverCodec)) {
+      this.decodeSupport = { ...this.decodeSupport, struggling: [...this.decodeSupport.struggling, this.serverCodec] };
+      this.log(`Decoder can't keep up with ${this.serverCodec}`);
+      this.emit('decodesupport', this.decodeSupport);
+      this.sendDecodeSupport();
+      this.decodeBacklogSecs = 0;
+    }
+    if (++this.decodeTicks % 5 === 0) this.sendDecodeSupport();
   }
 
   /** The controller the server is asked to emulate for a pad. */
@@ -497,6 +575,9 @@ export class VeilClient {
       case MSG_GAMEPAD_RUMBLE:
         this.handleGamepadRumble(payload);
         break;
+      case MSG_NETWORK:
+        this.emit('network', JSON.parse(new TextDecoder().decode(payload)) as NetworkStatus);
+        break;
       case MSG_VIEWERS:
         this.emit('viewers', JSON.parse(new TextDecoder().decode(payload)) as ViewerList);
         break;
@@ -567,6 +648,12 @@ export class VeilClient {
       return;
     }
     this.decoderConfigKey = configKey;
+    // Frames sent to the old decoder will never come out of this one.
+    this.frameSubmitTimes.clear();
+    this.decodeBacklogSecs = 0;
+    if (this.decodeProbedFor !== `${width}x${height}`) {
+      void this.probeDecodeSupport(width, height);
+    }
 
     // Initialize the video decoder.
     const firstHello = this.state !== ConnectionState.Connected;
@@ -1223,6 +1310,12 @@ export class VeilClient {
       clearInterval(this.gamepadInterval);
       this.gamepadInterval = null;
     }
+    if (this.decodeInterval !== null) {
+      clearInterval(this.decodeInterval);
+      this.decodeInterval = null;
+    }
+    this.decodeSupport = null;
+    this.decodeProbedFor = '';
     this.videoDecoder?.close();
     this.videoDecoder = null;
     this.decoderConfigKey = '';
@@ -1337,3 +1430,8 @@ const GAMEPAD_LAYOUT_WIRE = { xbox: 0, playstation: 1 } as const;
 export function detectGamepadLayout(id: string): 'xbox' | 'playstation' {
   return /vendor:\s*054c\b|^054c-|dualsense|dualshock|playstation/i.test(id) ? 'playstation' : 'xbox';
 }
+
+/** A decoder this many frames behind... */
+const DECODE_BACKLOG_FRAMES = 8;
+/** ...for this many seconds in a row can't keep up with the codec. */
+const DECODE_BACKLOG_SECS = 3;

@@ -11,8 +11,10 @@ const BASELINE_PEAK_BITRATE_MBPS: [f32; 10] =
     [5.0, 8.0, 10.0, 15.0, 20.0, 30.0, 40.0, 60.0, 80.0, 100.0];
 const BASELINE_DIMS: f32 = 1920.0 * 1080.0;
 const VBV_SIZE: u32 = 2500;
+/// The lowest bitrate a network limit can push VBR to.
+const MIN_LIMITED_BITRATE: u64 = 500_000;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RateControlMode {
     ConstantQp(CascadingQp),
     Vbr(LayeredVbr),
@@ -38,6 +40,37 @@ impl std::fmt::Display for RateControlMode {
 }
 
 impl RateControlMode {
+    /// The target average bitrate, for VBR.
+    pub fn average_bitrate(&self) -> Option<u64> {
+        match self {
+            Self::Vbr(vbr) => Some(vbr.base.average_bitrate),
+            _ => None,
+        }
+    }
+
+    /// This mode with VBR capped at `limit` bits/s (e.g. what the network
+    /// can carry). Peak bitrate scales with it, and the QP ceiling opens up
+    /// to the codec's maximum, since the preset's ceiling is what keeps
+    /// quality (and size) up. Other modes are returned unchanged.
+    pub fn limited(&self, limit: Option<u64>) -> Self {
+        match (self, limit) {
+            (Self::Vbr(vbr), Some(limit)) if limit < vbr.base.average_bitrate => {
+                let average = limit.max(MIN_LIMITED_BITRATE);
+                let scale = average as f64 / vbr.base.average_bitrate as f64;
+                Self::Vbr(LayeredVbr {
+                    base: VbrSettings {
+                        average_bitrate: average,
+                        peak_bitrate: ((vbr.base.peak_bitrate as f64 * scale) as u64).max(average),
+                        max_qp: vbr.qp_ceiling,
+                        min_qp: vbr.base.min_qp,
+                    },
+                    ..*vbr
+                })
+            }
+            _ => self.clone(),
+        }
+    }
+
     pub fn as_vk_flags(&self) -> vk::VideoEncodeRateControlModeFlagsKHR {
         match self {
             Self::ConstantQp(_) => vk::VideoEncodeRateControlModeFlagsKHR::DISABLED,
@@ -47,7 +80,7 @@ impl RateControlMode {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CascadingQp {
     target: u32,
     max: u32,
@@ -67,12 +100,14 @@ pub struct VbrSettings {
     pub min_qp: u32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LayeredVbr {
     pub vbv_size_ms: u32,
 
     base: VbrSettings,
     num_layers: u32,
+    /// The codec's highest usable QP, for when a bitrate limit applies.
+    qp_ceiling: u32,
 }
 
 impl LayeredVbr {
@@ -138,6 +173,7 @@ pub fn select_rc_mode(
                 max_qp: target_qp.clamp(min_qp, max_qp),
             },
             num_layers: structure.layers,
+            qp_ceiling: max_qp,
         })
     } else if supports_crf {
         // Fall back to CRF with a high QP.
@@ -156,4 +192,40 @@ fn layer_qp(target_qp: u32, layer: u32) -> u32 {
     // Example: for a target QP of 22, the QP for each layer is:
     //   22, 27, 29, 31...
     target_qp + (3 * layer.min(1)) + (layer * 2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vbr() -> RateControlMode {
+        RateControlMode::Vbr(LayeredVbr {
+            vbv_size_ms: VBV_SIZE,
+            base: VbrSettings { average_bitrate: 10_000_000, peak_bitrate: 20_000_000, max_qp: 28, min_qp: 17 },
+            num_layers: 1,
+            qp_ceiling: 51,
+        })
+    }
+
+    #[test]
+    fn limit_scales_vbr_and_opens_qp() {
+        let RateControlMode::Vbr(limited) = vbr().limited(Some(4_000_000)) else { panic!() };
+        assert_eq!(limited.base.average_bitrate, 4_000_000);
+        assert_eq!(limited.base.peak_bitrate, 8_000_000);
+        assert_eq!(limited.base.max_qp, 51);
+        assert_eq!(limited.base.min_qp, 17);
+    }
+
+    #[test]
+    fn limit_above_target_or_none_changes_nothing() {
+        assert_eq!(vbr().limited(Some(50_000_000)), vbr());
+        assert_eq!(vbr().limited(None), vbr());
+        let qp = RateControlMode::ConstantQp(CascadingQp { target: 22, max: 51 });
+        assert_eq!(qp.limited(Some(1_000_000)), qp);
+    }
+
+    #[test]
+    fn limit_has_a_floor() {
+        assert_eq!(vbr().limited(Some(1)).average_bitrate(), Some(MIN_LIMITED_BITRATE));
+    }
 }

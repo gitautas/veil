@@ -45,7 +45,11 @@ struct H265Metadata {
 pub struct H265Encoder {
     inner: super::EncoderInner,
     profile: H265EncodeProfile,
-    rc_mode: super::rate_control::RateControlMode,
+    rc_mode: RateControlMode,
+    /// The preset's rate control, before any bitrate limit.
+    base_rc: RateControlMode,
+    /// A changed rate control to apply on the next frame.
+    pending_rc: Option<RateControlMode>,
 
     structure: HierarchicalP,
     pic_metadata: Vec<H265Metadata>, // Indexed by layer.
@@ -398,6 +402,8 @@ impl H265Encoder {
         Ok(Self {
             inner,
             profile,
+            base_rc: rc_mode.clone(),
+            pending_rc: None,
             rc_mode,
             structure,
             pic_metadata,
@@ -422,82 +428,14 @@ impl H265Encoder {
             self.frame_num = 0;
         }
 
-        let pattern = if self.structure.layers > 1 {
-            vk::VideoEncodeH265RateControlFlagsKHR::TEMPORAL_SUB_LAYER_PATTERN_DYADIC
-        } else {
-            vk::VideoEncodeH265RateControlFlagsKHR::REFERENCE_PATTERN_FLAT
-        };
-
-        let mut h265_rc_layers = Vec::new();
-        let mut rc_layers = Vec::new();
-
-        if let RateControlMode::Vbr(vbr) = self.rc_mode {
-            let layer_settings = (0..self.structure.layers)
-                .map(|layer| vbr.layer(layer))
-                .collect::<Vec<_>>();
-
-            for settings in &layer_settings {
-                h265_rc_layers.push(
-                    vk::VideoEncodeH265RateControlLayerInfoKHR::default()
-                        .use_min_qp(true)
-                        .use_max_qp(true)
-                        .min_qp(vk::VideoEncodeH265QpKHR {
-                            qp_i: settings.min_qp as i32,
-                            qp_p: settings.min_qp as i32,
-                            qp_b: settings.min_qp as i32,
-                        })
-                        .max_qp(vk::VideoEncodeH265QpKHR {
-                            qp_i: settings.max_qp as i32,
-                            qp_p: settings.max_qp as i32,
-                            qp_b: settings.max_qp as i32,
-                        }),
-                );
-            }
-
-            for (layer, (settings, h265_rc_layer)) in layer_settings
-                .iter()
-                .zip(h265_rc_layers.iter_mut())
-                .enumerate()
-            {
-                let (fps_numerator, fps_denominator) = self
-                    .structure
-                    .layer_framerate(layer as u32, self.inner.framerate);
-
-                let mut layer_info = vk::VideoEncodeRateControlLayerInfoKHR::default()
-                    .max_bitrate(settings.peak_bitrate)
-                    .average_bitrate(settings.average_bitrate)
-                    .frame_rate_numerator(fps_numerator)
-                    .frame_rate_denominator(fps_denominator);
-
-                layer_info.p_next = h265_rc_layer as *mut _ as *mut std::ffi::c_void;
-
-                rc_layers.push(layer_info);
-            }
-        }
-
-        let mut h265_rc_info = vk::VideoEncodeH265RateControlInfoKHR::default()
-            .gop_frame_count(self.structure.gop_size)
-            .idr_period(self.structure.gop_size)
-            .consecutive_b_frame_count(0)
-            .sub_layer_count(rc_layers.len() as u32)
-            .flags(vk::VideoEncodeH265RateControlFlagsKHR::REGULAR_GOP | pattern);
-
-        let vbv_size = match self.rc_mode {
-            RateControlMode::Vbr(settings) => settings.vbv_size_ms,
-            _ => 0,
-        };
-
-        let mut rc_info = vk::VideoEncodeRateControlInfoKHR::default()
-            .rate_control_mode(self.rc_mode.as_vk_flags())
-            .virtual_buffer_size_in_ms(vbv_size);
-
-        if !rc_layers.is_empty() {
-            rc_info = rc_info.layers(&rc_layers);
-        }
-
-        // Doesn't have a `push_next` method, because we're supposed to chain it on
-        // the parent struct.
-        rc_info.p_next = <*mut _>::cast(&mut h265_rc_info);
+        // The rate control in effect, and a new one to switch to (e.g. a
+        // network bitrate limit changed).
+        let mut rc = self.rc_chain(&self.rc_mode);
+        let mut rc_update = self.pending_rc.take().map(|mode| {
+            let chain = self.rc_chain(&mode);
+            self.rc_mode = mode;
+            chain
+        });
 
         let weight_table: vk::native::StdVideoEncodeH265WeightTable = unsafe { std::mem::zeroed() };
 
@@ -677,7 +615,8 @@ impl H265Encoder {
                 tp_acquire,
                 tp_release,
                 &frame_state,
-                &mut rc_info as *mut _ as *mut std::ffi::c_void,
+                rc.as_pnext(),
+                rc_update.as_mut().map(|c| c.as_pnext()),
                 &mut h265_pic_info as *mut _ as *mut std::ffi::c_void,
                 &mut setup_info as *mut _ as *mut std::ffi::c_void,
                 &mut ref_pnext,
@@ -722,6 +661,64 @@ impl H265Encoder {
 
     pub fn create_input_image(&mut self) -> anyhow::Result<VkImage> {
         self.inner.create_input_image(self.profile.as_mut())
+    }
+
+    /// Rate control for `mode`, as Vulkan wants it.
+    fn rc_chain(
+        &self,
+        mode: &RateControlMode,
+    ) -> Box<
+        super::RcChain<vk::VideoEncodeH265RateControlInfoKHR<'static>, vk::VideoEncodeH265RateControlLayerInfoKHR<'static>>,
+    > {
+        let pattern = if self.structure.layers > 1 {
+            vk::VideoEncodeH265RateControlFlagsKHR::TEMPORAL_SUB_LAYER_PATTERN_DYADIC
+        } else {
+            vk::VideoEncodeH265RateControlFlagsKHR::REFERENCE_PATTERN_FLAT
+        };
+
+        let mut h265_layers = Vec::new();
+        let mut layers = Vec::new();
+        if let RateControlMode::Vbr(vbr) = mode {
+            for layer in 0..self.structure.layers {
+                let settings = vbr.layer(layer);
+                let qp = |qp: u32| vk::VideoEncodeH265QpKHR { qp_i: qp as i32, qp_p: qp as i32, qp_b: qp as i32 };
+                h265_layers.push(
+                    vk::VideoEncodeH265RateControlLayerInfoKHR::default()
+                        .use_min_qp(true)
+                        .use_max_qp(true)
+                        .min_qp(qp(settings.min_qp))
+                        .max_qp(qp(settings.max_qp)),
+                );
+                let (fps_numerator, fps_denominator) =
+                    self.structure.layer_framerate(layer, self.inner.framerate);
+                layers.push(
+                    vk::VideoEncodeRateControlLayerInfoKHR::default()
+                        .max_bitrate(settings.peak_bitrate)
+                        .average_bitrate(settings.average_bitrate)
+                        .frame_rate_numerator(fps_numerator)
+                        .frame_rate_denominator(fps_denominator),
+                );
+            }
+        }
+
+        let h265_info = vk::VideoEncodeH265RateControlInfoKHR::default()
+            .gop_frame_count(self.structure.gop_size)
+            .idr_period(self.structure.gop_size)
+            .consecutive_b_frame_count(0)
+            .sub_layer_count(layers.len() as u32)
+            .flags(vk::VideoEncodeH265RateControlFlagsKHR::REGULAR_GOP | pattern);
+
+        super::RcChain::new(mode, h265_layers, layers, h265_info)
+    }
+
+    pub fn set_bitrate_limit(&mut self, limit: Option<u64>) {
+        let mode = self.base_rc.limited(limit);
+        self.pending_rc = (mode != self.rc_mode).then_some(mode);
+    }
+
+    pub fn bitrates(&self) -> (Option<u64>, Option<u64>) {
+        let current = self.pending_rc.as_ref().unwrap_or(&self.rc_mode);
+        (current.average_bitrate(), self.base_rc.average_bitrate())
     }
 
     pub fn request_refresh(&mut self) {

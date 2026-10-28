@@ -16,7 +16,7 @@
 #   --release        Build Rust in release mode
 #   --size WxH       Compositor resolution (default: 1920x1080)
 #   --fps N          Framerate (default: 60)
-#   --codec h264|h265
+#   --codec auto|h264|h265|av1  (default: auto, from what viewers decode)
 #   --port N         QUIC/WebTransport port (default: 7801; cert-hash HTTP on N+1)
 #   --web-port N     HTTP demo server port (default: 7800)
 #   --no-build       Skip cargo build (use existing binary)
@@ -36,7 +36,7 @@ die()  { echo -e "${RED}[veil] ERROR:${NC} $*" >&2; exit 1; }
 RELEASE=0
 SIZE="1920x1080"
 FPS=60
-CODEC="h264"
+CODEC="auto"
 QUIC_PORT=7801
 WEB_PORT=7800
 NO_BUILD=0

@@ -293,6 +293,11 @@ export interface ServerStats {
   /** Submit-to-bitstream time on the server, in ms. */
   encode_ms_avg: number;
   encode_ms_max: number;
+  /** The encoder's current target bitrate, and the preset's (VBR only). */
+  target_bitrate: number | null;
+  preset_bitrate: number | null;
+  /** The network limit in effect, if any. */
+  bitrate_limit: number | null;
 }
 
 /** The server side of one client gamepad. */
@@ -394,6 +399,8 @@ export interface ViewerList {
 /** Settings to change; unset fields keep their current value. */
 export interface StreamParamsRequest {
   codec?: VideoCodecName;
+  /** Let the server pick the codec every viewer decodes best. */
+  auto_codec?: boolean;
   preset?: number;
   framerate?: number;
   gop_size?: number;
@@ -445,4 +452,39 @@ export interface VeilEventMap {
   compositorstate: CompositorState;
   /** Who's connected; on connect/disconnect and every couple of seconds. */
   viewers: ViewerList;
+  /** This viewer's network and the stream's adaptation, every second. */
+  network: NetworkStatus;
+  /** What this browser decodes, as reported to the server. */
+  decodesupport: DecodeSupport;
+}
+
+/** How well this browser decodes a codec at the stream's size. */
+export type DecodeLevel = 'hardware' | 'software' | 'none';
+
+export interface DecodeSupport {
+  h264: DecodeLevel;
+  h265: DecodeLevel;
+  av1: DecodeLevel;
+  /** Codecs the decoder fell behind on; Auto avoids them. */
+  struggling: VideoCodecName[];
+}
+
+/** The server's view of this viewer's network, and how the stream adapts. */
+export interface NetworkStatus {
+  rtt_ms: number;
+  min_rtt_ms: number;
+  /** How much longer than a round trip frames take to arrive. */
+  queue_ms: number;
+  /** Packet loss, 0-1. */
+  loss: number;
+  delivered_bps: number;
+  congested: boolean;
+  /** What this viewer's network carries, if it's the limit (null: no limit). */
+  budget_bps: number | null;
+  /** Whether the server picks the codec. */
+  auto_codec: boolean;
+  /** Why it picked the current codec, in Auto. */
+  codec_reason: string | null;
+  /** The bitrate cap across all viewers (null: none). */
+  limit_bps: number | null;
 }

@@ -7,6 +7,7 @@ import {
   StreamParamsRequest,
   GamepadStatus,
   GamepadType,
+  NetworkStatus,
   VideoCodecName,
   detectGamepadLayout,
   CompositorState,
@@ -41,6 +42,8 @@ const infoDriver = $('infoDriver');
 const infoWrite  = $('infoWrite');
 const infoCodec  = $('infoCodec');
 const infoRc     = $('infoRc');
+const infoBitrate = $('infoBitrate');
+const infoNet    = $('infoNet');
 const infoStream = $('infoStream');
 const infoGop    = $('infoGop');
 
@@ -412,8 +415,20 @@ function onStats(stats: ConnectionStats) {
   liveNote.textContent = current && !settled(current) ? 'settling…' : '';
 }
 
+const mbps = (bps: number) => `${(bps / 1e6).toFixed(bps < 1e7 ? 1 : 0)} Mbps`;
+
 function onServerStats(s: ServerStats) {
   lastServerStats = s;
+  if (s.target_bitrate === null) {
+    infoBitrate.textContent = 'Constant QP (not adapted)';
+    infoBitrate.className = '';
+  } else if (s.preset_bitrate !== null && s.target_bitrate < s.preset_bitrate) {
+    infoBitrate.textContent = `${mbps(s.target_bitrate)} of ${mbps(s.preset_bitrate)} · limited by the network`;
+    infoBitrate.className = 'warn';
+  } else {
+    infoBitrate.textContent = `${mbps(s.target_bitrate)} (preset)`;
+    infoBitrate.className = '';
+  }
   const perSec = 1000 / Math.max(1, s.window_ms);
   statEncMax.textContent  = fmtMs(s.encode_ms_max);
   statKeys.textContent    = (s.keyframes * perSec).toFixed(1);
@@ -427,6 +442,22 @@ function onServerStats(s: ServerStats) {
 // ─── Server info & settings form ──────────────────────────────────────────────
 
 let serverInfo: ServerInfo | null = null;
+/** The latest network/adaptation status, which says whether Auto is on. */
+let network: NetworkStatus | null = null;
+
+function onNetwork(n: NetworkStatus) {
+  const autoChanged = network?.auto_codec !== n.auto_codec;
+  network = n;
+  infoNet.textContent = `RTT ${n.rtt_ms.toFixed(0)} ms · queue ${n.queue_ms.toFixed(0)} ms · ` +
+    `loss ${(n.loss * 100).toFixed(1)}% · ${mbps(n.delivered_bps)}` + (n.congested ? ' · congested' : '');
+  infoNet.className = n.congested ? 'warn' : '';
+  if (serverInfo) {
+    infoCodec.textContent = `${codecName(serverInfo.codec)} ${serverInfo.codec_profile}` +
+      (n.auto_codec ? ' · Auto' : '');
+    infoCodec.title = (n.auto_codec && n.codec_reason) || '';
+  }
+  if (autoChanged && serverInfo) fillForm(serverInfo);
+}
 
 function onServerInfo(info: ServerInfo) {
   serverInfo = info;
@@ -476,10 +507,10 @@ function ensureOption(sel: HTMLSelectElement, value: string, label: string) {
 function fillForm(info: ServerInfo) {
   // Only offer codecs this GPU can encode (older servers don't say).
   for (const opt of setCodec.options) {
-    opt.disabled = !!info.codecs && !info.codecs.includes(opt.value as VideoCodecName);
+    opt.disabled = opt.value !== 'auto' && !!info.codecs && !info.codecs.includes(opt.value as VideoCodecName);
     opt.title = opt.disabled ? `${info.gpu} can't encode this` : '';
   }
-  setCodec.value  = info.codec;
+  setCodec.value  = network?.auto_codec ? 'auto' : info.codec;
   setPreset.value = String(info.preset);
   ensureOption(setRes, `${info.width}x${info.height}`, `${info.width}×${info.height}`);
   ensureOption(setFps, String(info.framerate), `${info.framerate} fps`);
@@ -493,7 +524,13 @@ function formChanges(): StreamParamsRequest {
   if (!serverInfo) return {};
   const req: StreamParamsRequest = {};
   const [w, h] = setRes.value.split('x').map(Number);
-  if (setCodec.value !== serverInfo.codec) req.codec = setCodec.value as VideoCodecName;
+  const auto = network?.auto_codec ?? false;
+  if (setCodec.value === 'auto') {
+    if (!auto) req.auto_codec = true;
+  } else if (auto || setCodec.value !== serverInfo.codec) {
+    req.codec = setCodec.value as VideoCodecName;
+    req.auto_codec = false;
+  }
   if (Number(setPreset.value) !== serverInfo.preset) req.preset = Number(setPreset.value);
   if (w !== serverInfo.width || h !== serverInfo.height) { req.width = w; req.height = h; }
   if (Number(setFps.value) !== serverInfo.framerate) req.framerate = Number(setFps.value);
@@ -511,7 +548,7 @@ function updateFormState() {
   const changes = formChanges();
   const changed = Object.keys(changes).length > 0;
 
-  setCodec.classList.toggle('changed', 'codec' in changes);
+  setCodec.classList.toggle('changed', 'codec' in changes || 'auto_codec' in changes);
   setPreset.classList.toggle('changed', 'preset' in changes);
   setRes.classList.toggle('changed', 'width' in changes);
   setFps.classList.toggle('changed', 'framerate' in changes);
@@ -1124,6 +1161,9 @@ function setStatus(state: ConnectionState) {
     padStatus.clear();
     padRumbleUntil.clear();
     myViewerId = null;
+    network = null;
+    infoNet.textContent = '—';
+    infoNet.className = '';
     padPrevEvents.clear();
     padRate.clear();
   }
@@ -1198,6 +1238,7 @@ async function connect(): Promise<boolean> {
 
   c.on('compositorstate', (st) => client === c && onCompositorState(st));
   c.on('viewers', (list) => client === c && onViewers(list));
+  c.on('network', (n) => client === c && onNetwork(n));
 
   setStatus(ConnectionState.Connecting);
   try {

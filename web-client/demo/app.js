@@ -20,6 +20,7 @@ var MSG_GAMEPAD_STATUS = 24;
 var MSG_COMPOSITOR_STATE = 25;
 var MSG_VIEWERS = 26;
 var MSG_GAMEPAD_RUMBLE = 27;
+var MSG_NETWORK = 28;
 var FRAME_KEY = 0;
 var CODEC_H265 = 2;
 var CODEC_AV1 = 3;
@@ -39,6 +40,7 @@ var INPUT_FOCUS_WINDOW = 46;
 var INPUT_SET_PARAMS = 47;
 var INPUT_SWITCH_GPU = 48;
 var INPUT_GAMEPAD_STATE = 49;
+var INPUT_DECODE_CAPS = 50;
 var STATS_UPDATE_INTERVAL = 1e3;
 var GAMEPAD_POLL_INTERVAL = 4;
 var GAMEPAD_RESEND_INTERVAL = 100;
@@ -560,6 +562,14 @@ var VeilClient = class {
     this.ctx2d = null;
     this.statsInterval = null;
     this.gamepadInterval = null;
+    /** Re-sends decode support and watches for the decoder falling behind. */
+    this.decodeInterval = null;
+    this.decodeSupport = null;
+    /** The stream size decode support was probed at. */
+    this.decodeProbedFor = "";
+    /** Consecutive seconds the decoder has had a backlog. */
+    this.decodeBacklogSecs = 0;
+    this.decodeTicks = 0;
     // Stores a deep snapshot of button/axis state (NOT a Gamepad reference).
     // Chrome returns the same live Gamepad object on every getGamepads() call,
     // so storing the object reference and comparing against it would always
@@ -667,6 +677,7 @@ var VeilClient = class {
       this.readIncomingDatagrams();
       this.setupInput(canvas2);
       this.statsInterval = setInterval(() => this.emitStats(), STATS_UPDATE_INTERVAL);
+      this.decodeInterval = setInterval(() => this.decodeTick(), 1e3);
       this.transport.closed.then(() => {
         this.log("WebTransport closed");
         this.handleClose();
@@ -736,6 +747,70 @@ var VeilClient = class {
   setGamepadType(index, type) {
     if (type === "auto") this.gamepadTypes.delete(index);
     else this.gamepadTypes.set(index, type);
+  }
+  /** What this browser decodes, as last reported to the server. */
+  getDecodeSupport() {
+    return this.decodeSupport;
+  }
+  /**
+   * Find out which codecs this browser decodes at the stream's size, and in
+   * hardware or software, and tell the server (its Auto codec uses this).
+   */
+  async probeDecodeSupport(width, height) {
+    const key = `${width}x${height}`;
+    this.decodeProbedFor = key;
+    const level = async (codec) => {
+      if (typeof VideoDecoder === "undefined") return "none";
+      for (const [accel, result] of [["prefer-hardware", "hardware"], ["prefer-software", "software"]]) {
+        try {
+          const r = await VideoDecoder.isConfigSupported({
+            codec,
+            codedWidth: width,
+            codedHeight: height,
+            hardwareAcceleration: accel,
+            optimizeForLatency: true
+          });
+          if (r.supported) return result;
+        } catch {
+        }
+      }
+      return "none";
+    };
+    const [h264, h265, av1] = await Promise.all([
+      level(h264CodecString(66, 51)),
+      level(H265_CODEC_STRING),
+      level(AV1_CODEC_STRING)
+    ]);
+    if (this.decodeProbedFor !== key) return;
+    this.decodeSupport = { h264, h265, av1, struggling: this.decodeSupport?.struggling ?? [] };
+    this.log("Decode support:", this.decodeSupport);
+    this.emit("decodesupport", this.decodeSupport);
+    this.sendDecodeSupport();
+  }
+  sendDecodeSupport() {
+    if (!this.decodeSupport) return;
+    const json = new TextEncoder().encode(JSON.stringify(this.decodeSupport));
+    const buf = new Uint8Array(1 + json.length);
+    buf[0] = INPUT_DECODE_CAPS;
+    buf.set(json, 1);
+    this.sendDatagram(buf);
+  }
+  /**
+   * Every second: if the decoder has had a backlog for a few seconds, mark
+   * the codec as one this browser can't keep up with; and every few seconds,
+   * re-send decode support, since datagrams can be lost.
+   */
+  decodeTick() {
+    const queued = this.videoDecoder?.decodeQueueSize ?? 0;
+    this.decodeBacklogSecs = queued >= DECODE_BACKLOG_FRAMES ? this.decodeBacklogSecs + 1 : 0;
+    if (this.decodeSupport && this.decodeBacklogSecs >= DECODE_BACKLOG_SECS && !this.decodeSupport.struggling.includes(this.serverCodec)) {
+      this.decodeSupport = { ...this.decodeSupport, struggling: [...this.decodeSupport.struggling, this.serverCodec] };
+      this.log(`Decoder can't keep up with ${this.serverCodec}`);
+      this.emit("decodesupport", this.decodeSupport);
+      this.sendDecodeSupport();
+      this.decodeBacklogSecs = 0;
+    }
+    if (++this.decodeTicks % 5 === 0) this.sendDecodeSupport();
   }
   /** The controller the server is asked to emulate for a pad. */
   getGamepadLayout(pad) {
@@ -859,6 +934,9 @@ var VeilClient = class {
       case MSG_GAMEPAD_RUMBLE:
         this.handleGamepadRumble(payload);
         break;
+      case MSG_NETWORK:
+        this.emit("network", JSON.parse(new TextDecoder().decode(payload)));
+        break;
       case MSG_VIEWERS:
         this.emit("viewers", JSON.parse(new TextDecoder().decode(payload)));
         break;
@@ -914,6 +992,11 @@ var VeilClient = class {
       return;
     }
     this.decoderConfigKey = configKey;
+    this.frameSubmitTimes.clear();
+    this.decodeBacklogSecs = 0;
+    if (this.decodeProbedFor !== `${width}x${height}`) {
+      void this.probeDecodeSupport(width, height);
+    }
     const firstHello = this.state !== "connected" /* Connected */;
     this.videoDecoder?.close();
     this.videoDecoder = new VeilVideoDecoder({
@@ -1457,6 +1540,12 @@ var VeilClient = class {
       clearInterval(this.gamepadInterval);
       this.gamepadInterval = null;
     }
+    if (this.decodeInterval !== null) {
+      clearInterval(this.decodeInterval);
+      this.decodeInterval = null;
+    }
+    this.decodeSupport = null;
+    this.decodeProbedFor = "";
     this.videoDecoder?.close();
     this.videoDecoder = null;
     this.decoderConfigKey = "";
@@ -1538,6 +1627,8 @@ var GAMEPAD_LAYOUT_WIRE = { xbox: 0, playstation: 1 };
 function detectGamepadLayout(id) {
   return /vendor:\s*054c\b|^054c-|dualsense|dualshock|playstation/i.test(id) ? "playstation" : "xbox";
 }
+var DECODE_BACKLOG_FRAMES = 8;
+var DECODE_BACKLOG_SECS = 3;
 
 // app.ts
 var $ = (id) => document.getElementById(id);
@@ -1562,6 +1653,8 @@ var infoDriver = $("infoDriver");
 var infoWrite = $("infoWrite");
 var infoCodec = $("infoCodec");
 var infoRc = $("infoRc");
+var infoBitrate = $("infoBitrate");
+var infoNet = $("infoNet");
 var infoStream = $("infoStream");
 var infoGop = $("infoGop");
 var liveNote = $("liveNote");
@@ -1857,11 +1950,11 @@ function updateLatency() {
 function onStats(stats) {
   lastStats = stats;
   onAudioStats(stats);
-  const mbps = stats.video.bitrateBps / 1e6;
+  const mbps2 = stats.video.bitrateBps / 1e6;
   push(fpsHistory, stats.video.fps);
-  push(bitrateHistory, mbps);
+  push(bitrateHistory, mbps2);
   valFps.textContent = String(stats.video.fps);
-  valBitrate.textContent = mbps.toFixed(1);
+  valBitrate.textContent = mbps2.toFixed(1);
   statDecoded.textContent = stats.video.framesDecoded.toLocaleString();
   statDropped.textContent = String(stats.video.framesDropped);
   statQueue.textContent = String(stats.video.decodeQueueSize);
@@ -1872,7 +1965,7 @@ function onStats(stats) {
     if (settled(current) && stats.video.fps > 0) {
       current.samples += 1;
       current.fps += stats.video.fps;
-      current.mbps += mbps;
+      current.mbps += mbps2;
       current.decodeMs += stats.decodeLatencyMs;
       current.rttMs += stats.rttMs;
     }
@@ -1880,8 +1973,19 @@ function onStats(stats) {
   }
   liveNote.textContent = current && !settled(current) ? "settling\u2026" : "";
 }
+var mbps = (bps) => `${(bps / 1e6).toFixed(bps < 1e7 ? 1 : 0)} Mbps`;
 function onServerStats(s) {
   lastServerStats = s;
+  if (s.target_bitrate === null) {
+    infoBitrate.textContent = "Constant QP (not adapted)";
+    infoBitrate.className = "";
+  } else if (s.preset_bitrate !== null && s.target_bitrate < s.preset_bitrate) {
+    infoBitrate.textContent = `${mbps(s.target_bitrate)} of ${mbps(s.preset_bitrate)} \xB7 limited by the network`;
+    infoBitrate.className = "warn";
+  } else {
+    infoBitrate.textContent = `${mbps(s.target_bitrate)} (preset)`;
+    infoBitrate.className = "";
+  }
   const perSec = 1e3 / Math.max(1, s.window_ms);
   statEncMax.textContent = fmtMs(s.encode_ms_max);
   statKeys.textContent = (s.keyframes * perSec).toFixed(1);
@@ -1892,6 +1996,18 @@ function onServerStats(s) {
   }
 }
 var serverInfo = null;
+var network = null;
+function onNetwork(n) {
+  const autoChanged = network?.auto_codec !== n.auto_codec;
+  network = n;
+  infoNet.textContent = `RTT ${n.rtt_ms.toFixed(0)} ms \xB7 queue ${n.queue_ms.toFixed(0)} ms \xB7 loss ${(n.loss * 100).toFixed(1)}% \xB7 ${mbps(n.delivered_bps)}` + (n.congested ? " \xB7 congested" : "");
+  infoNet.className = n.congested ? "warn" : "";
+  if (serverInfo) {
+    infoCodec.textContent = `${codecName(serverInfo.codec)} ${serverInfo.codec_profile}` + (n.auto_codec ? " \xB7 Auto" : "");
+    infoCodec.title = n.auto_codec && n.codec_reason || "";
+  }
+  if (autoChanged && serverInfo) fillForm(serverInfo);
+}
 function onServerInfo(info) {
   serverInfo = info;
   pendingApply = false;
@@ -1931,10 +2047,10 @@ function ensureOption(sel, value, label) {
 }
 function fillForm(info) {
   for (const opt of setCodec.options) {
-    opt.disabled = !!info.codecs && !info.codecs.includes(opt.value);
+    opt.disabled = opt.value !== "auto" && !!info.codecs && !info.codecs.includes(opt.value);
     opt.title = opt.disabled ? `${info.gpu} can't encode this` : "";
   }
-  setCodec.value = info.codec;
+  setCodec.value = network?.auto_codec ? "auto" : info.codec;
   setPreset.value = String(info.preset);
   ensureOption(setRes, `${info.width}x${info.height}`, `${info.width}\xD7${info.height}`);
   ensureOption(setFps, String(info.framerate), `${info.framerate} fps`);
@@ -1946,7 +2062,13 @@ function formChanges() {
   if (!serverInfo) return {};
   const req = {};
   const [w, h] = setRes.value.split("x").map(Number);
-  if (setCodec.value !== serverInfo.codec) req.codec = setCodec.value;
+  const auto = network?.auto_codec ?? false;
+  if (setCodec.value === "auto") {
+    if (!auto) req.auto_codec = true;
+  } else if (auto || setCodec.value !== serverInfo.codec) {
+    req.codec = setCodec.value;
+    req.auto_codec = false;
+  }
   if (Number(setPreset.value) !== serverInfo.preset) req.preset = Number(setPreset.value);
   if (w !== serverInfo.width || h !== serverInfo.height) {
     req.width = w;
@@ -1964,7 +2086,7 @@ function updateFormState() {
   const connected = client?.getState() === "connected" /* Connected */ && !!serverInfo;
   const changes = formChanges();
   const changed = Object.keys(changes).length > 0;
-  setCodec.classList.toggle("changed", "codec" in changes);
+  setCodec.classList.toggle("changed", "codec" in changes || "auto_codec" in changes);
   setPreset.classList.toggle("changed", "preset" in changes);
   setRes.classList.toggle("changed", "width" in changes);
   setFps.classList.toggle("changed", "framerate" in changes);
@@ -2478,6 +2600,9 @@ function setStatus(state) {
     padStatus.clear();
     padRumbleUntil.clear();
     myViewerId = null;
+    network = null;
+    infoNet.textContent = "\u2014";
+    infoNet.className = "";
     padPrevEvents.clear();
     padRate.clear();
   }
@@ -2551,6 +2676,7 @@ async function connect() {
   });
   c.on("compositorstate", (st) => client === c && onCompositorState(st));
   c.on("viewers", (list) => client === c && onViewers(list));
+  c.on("network", (n) => client === c && onNetwork(n));
   setStatus("connecting" /* Connecting */);
   try {
     await c.connect(canvas);

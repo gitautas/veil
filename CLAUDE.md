@@ -95,6 +95,13 @@ All fan-out uses a single `tokio::sync::broadcast::channel::<SessionEvent>(512)`
 - **Each transport client** subscribes independently — no relay tasks or bridges
 - `ControlMessage` flows the other direction (client → compositor) via a `WakingSender<ControlMessage>`
 
+### Adaptation (`src/transport/adapt.rs`)
+
+One encoder serves every viewer, so it follows the most constrained one:
+- **Bitrate**: each session times every video frame from write to the viewer's ack (`SendStream::finish`), and reads QUIC path stats (min RTT, loss). Once a second an AIMD estimator cuts its budget when frames queue (delivery > min RTT + 40 ms), packets drop (> 5%) or the viewer lags, and grows it 15%/s when clear. The lowest budget becomes `ControlMessage::SetBitrateLimit`, applied live (no keyframe) via `vkCmdControlVideoCoding`. Only VBR presets (0–6) adapt.
+- **Codec (Auto)**: browsers report decode support (`0x32`, hardware/software/none per codec, plus codecs whose decoder fell behind); the transport picks the best codec all viewers share and sends `SetStreamParams`.
+- Viewers get `0x1C` (JSON) each second with their RTT, queueing, loss, budget and the Auto reason.
+
 ### Wire Protocol
 
 Server → client QUIC streams (byte prefix):
@@ -117,7 +124,7 @@ Client → server QUIC datagrams:
 | `--transport-addr` | `0.0.0.0:7801` | Bind address (cert-hash HTTP on port+1) |
 | `--size WxH` | `1920x1080` | Compositor resolution |
 | `--fps N` | 60 | Encode framerate |
-| `--codec h264\|h265\|av1` | h264 | Video codec (AV1 is experimental; RADV only here) |
+| `--codec auto\|h264\|h265\|av1` | auto | Video codec. `auto` picks what every viewer decodes best (hardware first); AV1 is experimental (RADV only here) |
 | `--out <path>` | — | Write elementary stream to file |
 | `--seconds N` | — | Stop after N seconds |
 | `--xwayland` / `--no-xwayland` | on | Toggle Xwayland |

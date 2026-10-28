@@ -76,6 +76,9 @@ pub const MSG_VIEWERS: u8 = 0x1A;
 /// Rumble for one of the recipient's pads:
 /// `[index:u8][strong:u16][weak:u16][duration_ms:u16]` (big-endian).
 pub const MSG_GAMEPAD_RUMBLE: u8 = 0x1B;
+/// This viewer's network and the stream's adaptation, JSON
+/// [`NetworkStatus`](crate::transport::session::NetworkStatus), every second.
+pub const MSG_NETWORK: u8 = 0x1C;
 
 // ─── Frame type flags ───────────────────────────────────────────────────────
 
@@ -115,6 +118,10 @@ pub const INPUT_SWITCH_GPU: u8 = 0x30;
 /// (big-endian). Lost or reordered datagrams can't leave inputs stuck, since
 /// the next snapshot carries the whole state.
 pub const INPUT_GAMEPAD_STATE: u8 = 0x31;
+/// What the browser can decode, JSON
+/// [`DecodeCaps`](crate::transport::adapt::DecodeCaps); sent on connect, on
+/// change and every few seconds. Handled by the transport.
+pub const INPUT_DECODE_CAPS: u8 = 0x32;
 
 // ─── Encoding helpers ───────────────────────────────────────────────────────
 

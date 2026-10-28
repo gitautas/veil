@@ -43,6 +43,9 @@ struct RunOptions {
     framerate: u32,
 
     codec: VideoCodec,
+    /// Pick the codec from what the viewers decode (`codec` is where it
+    /// starts).
+    auto_codec: bool,
     preset: u32,
     profile: VideoProfile,
     /// IDR interval in frames (0 = use encoder default of 60).
@@ -136,7 +139,7 @@ fn run(opts: RunOptions) -> anyhow::Result<()> {
         let rt = tokio::runtime::Runtime::new()
             .context("failed to create Tokio runtime")?;
 
-        let server = transport::TransportServer::new(opts.transport_addr, video_params)
+        let server = transport::TransportServer::new(opts.transport_addr, video_params, opts.auto_codec)
             .context("failed to create TransportServer")?;
 
         info!(
@@ -233,6 +236,7 @@ fn run(opts: RunOptions) -> anyhow::Result<()> {
         height = opts.height,
         framerate = opts.framerate,
         codec = ?opts.codec,
+        auto_codec = opts.auto_codec,
         transport = opts.enable_transport,
         "Veil running"
     );
@@ -345,6 +349,7 @@ fn exec_restart_if_requested() -> anyhow::Result<()> {
     let mut overrides = Vec::<OsString>::new();
     if let Some(p) = req.video_params {
         let codec = match p.codec {
+            _ if transport::auto_codec_enabled() => "auto",
             VideoCodec::H265 => "h265",
             VideoCodec::Av1 => "av1",
             VideoCodec::H264 => "h264",
@@ -380,7 +385,9 @@ OPTIONS:
   --out <path>              Output file for encoded stream (optional)
   --size <WxH>              Resolution (default: 1280x720)
   --fps <n>                 Framerate (default: 60)
-  --codec <h264|h265|av1>   Video codec (default: h264; av1 is experimental)
+  --codec <auto|h264|h265|av1>
+                            Video codec (default: auto, the best codec every
+                            viewer decodes; av1 is experimental)
   --gop-size <n>            IDR/keyframe interval in frames (default: 30; 0 = encoder default of 60)
   --in-flight <n>           Encoder output buffers in flight (default: 2; 1 = lowest latency)
   --preset <0-9>            Quality preset; 0-6 = VBR (higher is more bitrate), 7-9 = constant QP (default: 0)
@@ -435,6 +442,8 @@ fn main() -> anyhow::Result<()> {
     let mut height: u32 = 720;
     let mut fps: u32 = 60;
     let mut codec = VideoCodec::H264;
+    // Without --codec, pick the codec from what viewers can decode.
+    let mut auto_codec = true;
     let mut gop_size: u32 = 30;
     let mut in_flight_frames: u32 = 0;
     let mut preset: u32 = 0;
@@ -482,7 +491,9 @@ fn main() -> anyhow::Result<()> {
             "--codec" => {
                 i += 1;
                 let v = argv.get(i).cloned().unwrap_or_else(|| usage());
-                codec = parse_codec(&v.to_string_lossy())?;
+                let v = v.to_string_lossy();
+                auto_codec = v.eq_ignore_ascii_case("auto");
+                codec = if auto_codec { VideoCodec::H264 } else { parse_codec(&v)? };
             }
             "--gop-size" => {
                 i += 1;
@@ -560,6 +571,7 @@ fn main() -> anyhow::Result<()> {
         height,
         framerate: fps,
         codec,
+        auto_codec: auto_codec && enable_transport,
         preset,
         profile: VideoProfile::Hd,
         gop_size,

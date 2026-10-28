@@ -9,11 +9,16 @@
 //! 3. Receives QUIC datagrams from the client (input events) and forwards
 //!    them to the reactor via a cloned [`WakingSender`].
 
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use tokio::sync::{broadcast, watch};
 use tracing::{debug, info, warn};
 use wtransport::Connection;
+
+use super::adapt::{Adaptation, AdaptationStatus, DecodeCaps, DeliveryWindow, NetEstimator, NetSample};
 
 use crate::{
     codec::VideoCodec,
@@ -34,7 +39,29 @@ pub struct SessionConfig {
     pub viewers: std::sync::Arc<super::viewers::Viewers>,
     /// This session's entry in `viewers`; removed when the session ends.
     pub viewer: super::viewers::ViewerGuard,
+    /// Bitrate and codec adaptation, shared by all sessions.
+    pub adapt: Arc<Adaptation>,
 }
+
+/// What a viewer is told about its network and the stream's adaptation
+/// (MSG 0x1C).
+#[derive(Debug, serde::Serialize)]
+pub struct NetworkStatus {
+    pub rtt_ms: f64,
+    pub min_rtt_ms: f64,
+    /// How much longer than a round trip frames take to be delivered.
+    pub queue_ms: f64,
+    pub loss: f64,
+    pub delivered_bps: u64,
+    pub congested: bool,
+    /// What this viewer's network carries, if it's limiting (None: no limit).
+    pub budget_bps: Option<u64>,
+    #[serde(flatten)]
+    pub adaptation: AdaptationStatus,
+}
+
+/// How often each session re-estimates its network.
+const NET_TICK: Duration = Duration::from_secs(1);
 
 // ─── Stream send helper ──────────────────────────────────────────────────────
 
@@ -62,6 +89,45 @@ async fn send_stream(conn: &Connection, data: Bytes) -> Result<()> {
         }
     });
     Ok(())
+}
+
+/// Like [`send_stream`], and record in `window` how long it took the viewer
+/// to acknowledge all of it (`finish` waits for that).
+async fn send_timed_stream(conn: &Connection, data: Bytes, window: &Arc<Mutex<DeliveryWindow>>) -> Result<()> {
+    let start = Instant::now();
+    let len = data.len() as u64;
+    let mut stream = conn
+        .open_uni()
+        .await
+        .context("failed to open QUIC uni stream")?
+        .await
+        .context("failed to obtain send stream")?;
+    stream.write_all(&data).await.context("failed to write stream payload")?;
+    let window = window.clone();
+    tokio::spawn(async move {
+        match stream.finish().await {
+            Ok(()) => {
+                let mut w = window.lock().unwrap();
+                w.frames += 1;
+                w.delivery_ms_sum += start.elapsed().as_secs_f64() * 1000.0;
+                w.bytes += len;
+            }
+            Err(e) => debug!("failed to finish QUIC stream: {e}"),
+        }
+    });
+    Ok(())
+}
+
+/// Hand adaptation decisions to the reactor.
+fn send_to_reactor(ctrl_rx: &watch::Receiver<Option<WakingSender<ControlMessage>>>, msgs: Vec<ControlMessage>) {
+    if msgs.is_empty() {
+        return;
+    }
+    if let Some(ctrl) = ctrl_rx.borrow().as_ref() {
+        for msg in msgs {
+            let _ = ctrl.send(msg);
+        }
+    }
 }
 
 // ─── Session entry point ─────────────────────────────────────────────────────
@@ -99,6 +165,8 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
 
     let refresh_rx = cfg.ctrl_rx.clone();
     let mut ctrl_rx = cfg.ctrl_rx;
+    let adapt = cfg.adapt.clone();
+    adapt.join(cfg.viewer.id);
 
     // ── Input datagram receiver ───────────────────────────────────────────────
     // The WakingSender is Send + Clone so we can move a clone into this task.
@@ -110,6 +178,7 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
         let conn_ref = conn.clone();
         let viewers = cfg.viewers.clone();
         let my_pads = my_pads.clone();
+        let adapt = adapt.clone();
         tokio::spawn(async move {
             // Wait until the reactor control channel is available.
             // Datagrams that arrive before the compositor is ready are dropped.
@@ -152,7 +221,34 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
                             }
                             continue; // skip reactor for ping
                         }
+                        // Decode support feeds codec selection here, not the reactor.
+                        if dgram.first() == Some(&proto::INPUT_DECODE_CAPS) {
+                            match serde_json::from_slice::<DecodeCaps>(&dgram[1..]) {
+                                Ok(caps) => {
+                                    debug!(viewer = my_id, ?caps, "decode support");
+                                    for m in adapt.set_decode(my_id, caps) {
+                                        let _ = ctrl.send(m);
+                                    }
+                                }
+                                Err(e) => debug!("bad decode caps: {e}"),
+                            }
+                            continue;
+                        }
                         if let Some(mut msg) = proto::parse_input_datagram(&dgram) {
+                            // Turning Auto on or off is the transport's business;
+                            // picking a codec by hand turns it off.
+                            let mut follow_up = Vec::new();
+                            if let ControlMessage::SetStreamParams(req) = &mut msg {
+                                match req.auto_codec.take() {
+                                    Some(true) => {
+                                        req.codec = None;
+                                        follow_up = adapt.set_auto_codec(true);
+                                    }
+                                    Some(false) => follow_up = adapt.set_auto_codec(false),
+                                    None if req.codec.is_some() => follow_up = adapt.set_auto_codec(false),
+                                    None => {}
+                                }
+                            }
                             if let Some(index) = scope_pad_id(&mut msg, my_id) {
                                 let mut pads = my_pads.lock().unwrap();
                                 if matches!(msg, ControlMessage::GamepadUnavailable(_)) {
@@ -167,6 +263,9 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
                             if let Err(e) = ctrl.send(msg) {
                                 debug!("Control channel closed: {e}");
                                 break;
+                            }
+                            for m in follow_up {
+                                let _ = ctrl.send(m);
                             }
                         }
                     }
@@ -184,10 +283,68 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
     // been skipped, so after a skip (and before the first keyframe) we hold
     // video back until the next keyframe.
     let mut awaiting_keyframe = true;
+
+    // Network estimation: delivered frames, skips, and QUIC's path stats,
+    // sampled every NET_TICK.
+    let delivery = Arc::new(Mutex::new(DeliveryWindow::default()));
+    let mut estimator = NetEstimator::default();
+    let mut skipped = 0u64;
+    let mut encoder_bitrates: (Option<u64>, Option<u64>) = (None, None);
+    let mut last_path = conn.quic_connection().stats().path;
+    let mut last_tick = Instant::now();
+    let mut net_tick = tokio::time::interval(NET_TICK);
+    net_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
     loop {
-        let event = match cfg.events_rx.recv().await {
+        let recv = tokio::select! {
+            ev = cfg.events_rx.recv() => ev,
+            _ = net_tick.tick() => {
+                let path = conn.quic_connection().stats().path;
+                let window = std::mem::take(&mut *delivery.lock().unwrap());
+                let now = Instant::now();
+                let sample = NetSample {
+                    interval: now - last_tick,
+                    frames: window.frames,
+                    delivery_ms: if window.frames > 0 { window.delivery_ms_sum / window.frames as f64 } else { 0.0 },
+                    bytes: window.bytes,
+                    min_rtt_ms: path.min_rtt.as_secs_f64() * 1000.0,
+                    rtt_ms: path.rtt.as_secs_f64() * 1000.0,
+                    sent_packets: path.sent_packets.saturating_sub(last_path.sent_packets),
+                    lost_packets: path.lost_packets.saturating_sub(last_path.lost_packets),
+                    skipped: std::mem::take(&mut skipped),
+                    target_bps: encoder_bitrates.0,
+                    preset_bps: encoder_bitrates.1,
+                };
+                last_path = path;
+                last_tick = now;
+
+                let budget = estimator.tick(&sample, now);
+                if estimator.congested {
+                    debug!(peer = %peer, ?sample, ?budget, "network congested");
+                }
+                send_to_reactor(&refresh_rx, adapt.set_budget(my_id, budget));
+
+                let status = NetworkStatus {
+                    rtt_ms: sample.rtt_ms,
+                    min_rtt_ms: sample.min_rtt_ms,
+                    queue_ms: estimator.queue_ms,
+                    loss: estimator.loss,
+                    delivered_bps: estimator.delivered_bps,
+                    congested: estimator.congested,
+                    budget_bps: budget,
+                    adaptation: adapt.status(),
+                };
+                if let Err(e) = send_stream(&conn, proto::encode_json(proto::MSG_NETWORK, &status)).await {
+                    warn!(peer = %peer, "Send error: {e}");
+                    break;
+                }
+                continue;
+            }
+        };
+        let event = match recv {
             Ok(ev) => ev,
             Err(broadcast::error::RecvError::Lagged(n)) => {
+                skipped += n;
                 warn!(
                     peer = %peer,
                     skipped = n,
@@ -215,7 +372,7 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
                 awaiting_keyframe = false;
                 let pts_ms = seq as u32; // seq is already wall-clock PTS in ms
                 let payload = proto::encode_video(is_keyframe, seq, pts_ms, &frame);
-                send_stream(&conn, payload).await
+                send_timed_stream(&conn, payload, &delivery).await
             }
 
             SessionEvent::AudioFrame { seq, frame } => {
@@ -270,6 +427,7 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
             }
 
             SessionEvent::StreamInfo(info) => {
+                send_to_reactor(&refresh_rx, adapt.stream_info(&info));
                 // The codec or size may have changed, so re-send the hello the
                 // client configures its decoder from, then hold video back
                 // until the new pipeline's first keyframe.
@@ -299,6 +457,7 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
             }
 
             SessionEvent::EncoderStats(stats) => {
+                encoder_bitrates = (stats.target_bitrate, stats.preset_bitrate);
                 send_stream(&conn, proto::encode_json(proto::MSG_SERVER_STATS, &stats)).await
             }
 
@@ -336,6 +495,7 @@ pub async fn run_client_session(conn: Connection, mut cfg: SessionConfig) -> Res
     }
 
     input_task.abort();
+    send_to_reactor(&refresh_rx, adapt.leave(my_id));
     // Unplug this viewer's pads.
     if let Some(ctrl) = refresh_rx.borrow().as_ref() {
         for index in std::mem::take(&mut *my_pads.lock().unwrap()) {

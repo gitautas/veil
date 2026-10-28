@@ -65,6 +65,9 @@ pub enum ControlMessage {
     /// Stop streaming frames (keeps the compositor alive while the app runs).
     StopStream,
     RefreshVideo,
+    /// Cap the video bitrate at what the slowest viewer's network carries
+    /// (bits/s), or lift the cap. Applied live, without a keyframe.
+    SetBitrateLimit(Option<u64>),
     UpdateDisplayParams(DisplayParams),
     KeyboardInput {
         key_code: u32,
@@ -146,6 +149,9 @@ pub struct RestartRequest {
 #[serde(default)]
 pub struct StreamParamsRequest {
     pub codec: Option<VideoCodec>,
+    /// Pick the codec from what viewers decode (handled by the transport,
+    /// which then sends `codec`).
+    pub auto_codec: Option<bool>,
     pub preset: Option<u32>,
     pub framerate: Option<u32>,
     pub gop_size: Option<u32>,
@@ -311,6 +317,12 @@ pub struct EncoderStats {
     /// ready, in milliseconds.
     pub encode_ms_avg: f64,
     pub encode_ms_max: f64,
+    /// The encoder's current target bitrate, and the preset's (the ceiling a
+    /// network limit lowers it from), for VBR.
+    pub target_bitrate: Option<u64>,
+    pub preset_bitrate: Option<u64>,
+    /// The network limit in effect, if any.
+    pub bitrate_limit: Option<u64>,
 }
 
 #[allow(dead_code)]

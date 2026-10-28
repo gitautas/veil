@@ -832,7 +832,16 @@ impl EncodePipeline {
     }
 
     pub fn take_stats(&self) -> crate::session::control::EncoderStats {
-        self.encoder.take_stats()
+        let (target, preset) = self.encoder.bitrates();
+        crate::session::control::EncoderStats {
+            target_bitrate: target,
+            preset_bitrate: preset,
+            ..self.encoder.take_stats()
+        }
+    }
+
+    pub fn set_bitrate_limit(&mut self, limit: Option<u64>) {
+        self.encoder.set_bitrate_limit(limit);
     }
 }
 

@@ -45,6 +45,8 @@ export const MSG_COMPOSITOR_STATE = 0x19;
 export const MSG_VIEWERS = 0x1A;
 /** Rumble for one of our pads: [index][strong u16][weak u16][duration_ms u16]. */
 export const MSG_GAMEPAD_RUMBLE = 0x1B;
+/** This viewer's network and the stream's adaptation (JSON), every second. */
+export const MSG_NETWORK = 0x1C;
 
 /** Frame type flags. */
 export const FRAME_KEY = 0x00;
@@ -78,6 +80,8 @@ export const INPUT_SET_PARAMS = 0x2F;
 export const INPUT_SWITCH_GPU = 0x30;
 /** Full gamepad snapshot: [index][seq u32][buttons u32][lt][rt][lx,ly,rx,ry i16]. */
 export const INPUT_GAMEPAD_STATE = 0x31;
+/** What this browser can decode (JSON), for the server's Auto codec. */
+export const INPUT_DECODE_CAPS = 0x32;
 
 // ─── Client timing ──────────────────────────────────────────────────────────
 

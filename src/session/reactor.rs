@@ -71,6 +71,8 @@ pub struct Reactor {
     video_params: Option<VideoStreamParams>,
     stream_info: Option<Arc<StreamInfo>>,
     last_stats_at: time::Instant,
+    /// The network bitrate limit, kept across pipeline rebuilds.
+    bitrate_limit: Option<u64>,
 
     input_manager: input::InputDeviceManager,
     gamepads: BTreeMap<u64, input::GamepadHandle>,
@@ -365,6 +367,7 @@ impl Reactor {
             video_params: None,
             stream_info: None,
             last_stats_at: time::Instant::now(),
+            bitrate_limit: None,
 
             input_manager,
             gamepads,
@@ -800,6 +803,9 @@ impl Reactor {
                 self.display_params,
                 params,
             )?);
+            if let Some(video) = &mut self.video_pipeline {
+                video.set_bitrate_limit(self.bitrate_limit);
+            }
             info!("frame: video_pipeline created successfully");
             self.video_params = Some(params);
             self.publish_stream_info();
@@ -825,8 +831,11 @@ impl Reactor {
         let stats_due = self.last_stats_at.elapsed() >= time::Duration::from_secs(1);
         if stats_due {
             self.last_stats_at = time::Instant::now();
-            self.session_handle
-                .dispatch(SessionEvent::EncoderStats(video_pipeline.take_stats()));
+            let stats = crate::session::control::EncoderStats {
+                bitrate_limit: self.bitrate_limit,
+                ..video_pipeline.take_stats()
+            };
+            self.session_handle.dispatch(SessionEvent::EncoderStats(stats));
         }
 
         trace!("frame: compositing with video_pipeline");
@@ -879,6 +888,15 @@ impl Reactor {
                 self.new_video_stream_params = None;
                 self.audio_pipeline.stop_stream();
                 self.compositor.update_focus_and_visibility(false)?;
+            }
+            ControlMessage::SetBitrateLimit(limit) => {
+                if limit != self.bitrate_limit {
+                    debug!(?limit, "bitrate limit");
+                }
+                self.bitrate_limit = limit;
+                if let Some(video) = &mut self.video_pipeline {
+                    video.set_bitrate_limit(limit);
+                }
             }
             ControlMessage::RefreshVideo => {
                 if let Some(video) = &mut self.video_pipeline {

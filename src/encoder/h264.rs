@@ -72,6 +72,10 @@ pub struct H264Encoder {
     inner: super::EncoderInner,
     profile: H264EncodeProfile,
     rc_mode: RateControlMode,
+    /// The preset's rate control, before any bitrate limit.
+    base_rc: RateControlMode,
+    /// A changed rate control to apply on the next frame.
+    pending_rc: Option<RateControlMode>,
 
     structure: HierarchicalP,
     pic_metadata: Vec<H264Metadata>, // Indexed by layer.
@@ -347,6 +351,8 @@ impl H264Encoder {
         Ok(Self {
             inner,
             profile,
+            base_rc: rc_mode.clone(),
+            pending_rc: None,
             rc_mode,
             structure,
             pic_metadata,
@@ -384,82 +390,14 @@ impl H264Encoder {
             self.frame_num = 0;
         }
 
-        let pattern = if self.structure.layers > 1 {
-            vk::VideoEncodeH264RateControlFlagsKHR::TEMPORAL_LAYER_PATTERN_DYADIC
-        } else {
-            vk::VideoEncodeH264RateControlFlagsKHR::REFERENCE_PATTERN_FLAT
-        };
-
-        let mut h264_rc_layers = Vec::new();
-        let mut rc_layers = Vec::new();
-
-        if let RateControlMode::Vbr(vbr) = self.rc_mode {
-            let layer_settings = (0..self.structure.layers)
-                .map(|layer| vbr.layer(layer))
-                .collect::<Vec<_>>();
-
-            for settings in &layer_settings {
-                h264_rc_layers.push(
-                    vk::VideoEncodeH264RateControlLayerInfoKHR::default()
-                        .use_min_qp(true)
-                        .use_max_qp(true)
-                        .min_qp(vk::VideoEncodeH264QpKHR {
-                            qp_i: settings.min_qp as i32,
-                            qp_p: settings.min_qp as i32,
-                            qp_b: settings.min_qp as i32,
-                        })
-                        .max_qp(vk::VideoEncodeH264QpKHR {
-                            qp_i: settings.max_qp as i32,
-                            qp_p: settings.max_qp as i32,
-                            qp_b: settings.max_qp as i32,
-                        }),
-                );
-            }
-
-            // We can't do this in one step because the borrow checker doesn't
-            // like the way push_next borrows.
-            // TODO: Ash 0.39 may make this easier.
-            for (layer, (settings, h264)) in layer_settings
-                .iter()
-                .zip(h264_rc_layers.iter_mut())
-                .enumerate()
-            {
-                let (fps_numerator, fps_denominator) = self
-                    .structure
-                    .layer_framerate(layer as u32, self.inner.framerate);
-
-                let mut layer_info = vk::VideoEncodeRateControlLayerInfoKHR::default()
-                    .max_bitrate(settings.peak_bitrate)
-                    .average_bitrate(settings.average_bitrate)
-                    .frame_rate_numerator(fps_numerator)
-                    .frame_rate_denominator(fps_denominator);
-
-                layer_info.p_next = h264 as *mut _ as *mut c_void;
-
-                rc_layers.push(layer_info);
-            }
-        }
-
-        let mut h264_rc_info = vk::VideoEncodeH264RateControlInfoKHR::default()
-            .gop_frame_count(self.structure.gop_size)
-            .idr_period(self.structure.gop_size)
-            .consecutive_b_frame_count(0)
-            .temporal_layer_count(rc_layers.len() as u32)
-            .flags(vk::VideoEncodeH264RateControlFlagsKHR::REGULAR_GOP | pattern);
-
-        let vbv_size = match self.rc_mode {
-            RateControlMode::Vbr(vbr) => vbr.vbv_size_ms,
-            _ => 0,
-        };
-
-        let mut rc_info = vk::VideoEncodeRateControlInfoKHR::default()
-            .rate_control_mode(self.rc_mode.as_vk_flags())
-            .virtual_buffer_size_in_ms(vbv_size)
-            .layers(&rc_layers);
-
-        // Doesn't have a push_next method, because we're supposed to call it on the
-        // parent struct.
-        rc_info.p_next = <*mut _>::cast(&mut h264_rc_info);
+        // The rate control in effect, and a new one to switch to (e.g. a
+        // network bitrate limit changed).
+        let mut rc = self.rc_chain(&self.rc_mode);
+        let mut rc_update = self.pending_rc.take().map(|mode| {
+            let chain = self.rc_chain(&mode);
+            self.rc_mode = mode;
+            chain
+        });
 
         let weight_table: vk::native::StdVideoEncodeH264WeightTable = unsafe { std::mem::zeroed() };
 
@@ -589,7 +527,8 @@ impl H264Encoder {
                 tp_acquire,
                 tp_release,
                 &frame_state,
-                &mut rc_info as *mut _ as *mut c_void,
+                rc.as_pnext(),
+                rc_update.as_mut().map(|c| c.as_pnext()),
                 &mut h264_pic_info as *mut _ as *mut c_void,
                 &mut setup_info as *mut _ as *mut c_void,
                 &mut ref_pnext,
@@ -633,6 +572,64 @@ impl H264Encoder {
 
     pub fn create_input_image(&mut self) -> anyhow::Result<VkImage> {
         self.inner.create_input_image(self.profile.as_mut())
+    }
+
+    /// Rate control for `mode`, as Vulkan wants it.
+    fn rc_chain(
+        &self,
+        mode: &RateControlMode,
+    ) -> Box<
+        super::RcChain<vk::VideoEncodeH264RateControlInfoKHR<'static>, vk::VideoEncodeH264RateControlLayerInfoKHR<'static>>,
+    > {
+        let pattern = if self.structure.layers > 1 {
+            vk::VideoEncodeH264RateControlFlagsKHR::TEMPORAL_LAYER_PATTERN_DYADIC
+        } else {
+            vk::VideoEncodeH264RateControlFlagsKHR::REFERENCE_PATTERN_FLAT
+        };
+
+        let mut h264_layers = Vec::new();
+        let mut layers = Vec::new();
+        if let RateControlMode::Vbr(vbr) = mode {
+            for layer in 0..self.structure.layers {
+                let settings = vbr.layer(layer);
+                let qp = |qp: u32| vk::VideoEncodeH264QpKHR { qp_i: qp as i32, qp_p: qp as i32, qp_b: qp as i32 };
+                h264_layers.push(
+                    vk::VideoEncodeH264RateControlLayerInfoKHR::default()
+                        .use_min_qp(true)
+                        .use_max_qp(true)
+                        .min_qp(qp(settings.min_qp))
+                        .max_qp(qp(settings.max_qp)),
+                );
+                let (fps_numerator, fps_denominator) =
+                    self.structure.layer_framerate(layer, self.inner.framerate);
+                layers.push(
+                    vk::VideoEncodeRateControlLayerInfoKHR::default()
+                        .max_bitrate(settings.peak_bitrate)
+                        .average_bitrate(settings.average_bitrate)
+                        .frame_rate_numerator(fps_numerator)
+                        .frame_rate_denominator(fps_denominator),
+                );
+            }
+        }
+
+        let h264_info = vk::VideoEncodeH264RateControlInfoKHR::default()
+            .gop_frame_count(self.structure.gop_size)
+            .idr_period(self.structure.gop_size)
+            .consecutive_b_frame_count(0)
+            .temporal_layer_count(layers.len() as u32)
+            .flags(vk::VideoEncodeH264RateControlFlagsKHR::REGULAR_GOP | pattern);
+
+        super::RcChain::new(mode, h264_layers, layers, h264_info)
+    }
+
+    pub fn set_bitrate_limit(&mut self, limit: Option<u64>) {
+        let mode = self.base_rc.limited(limit);
+        self.pending_rc = (mode != self.rc_mode).then_some(mode);
+    }
+
+    pub fn bitrates(&self) -> (Option<u64>, Option<u64>) {
+        let current = self.pending_rc.as_ref().unwrap_or(&self.rc_mode);
+        (current.average_bitrate(), self.base_rc.average_bitrate())
     }
 
     pub fn request_refresh(&mut self) {

@@ -367,6 +367,7 @@
     }
     .chip.good { background: rgba(74,222,128,0.16); color: var(--good); }
     .chip.warn { background: rgba(250,204,21,0.16); color: var(--warn); }
+    .kv dd.warn { color: var(--warn); }
     .chip.bad  { background: rgba(248,113,113,0.16); color: var(--bad); }
     .chip.x11  { background: rgba(251,146,60,0.16); color: var(--orange); }
     .chip.wl   { background: rgba(96,165,250,0.16); color: var(--blue); }
@@ -451,6 +452,8 @@
       <dt>Write path</dt>   <dd id="infoWrite" title="How converted frames reach the encoder">—</dd>
       <dt>Codec</dt>        <dd id="infoCodec">—</dd>
       <dt>Rate control</dt> <dd id="infoRc">—</dd>
+      <dt>Bitrate</dt>      <dd id="infoBitrate" title="The encoder's target, and the preset's when the network limits it">—</dd>
+      <dt>Network</dt>      <dd id="infoNet" title="Round trip, queueing (delivery time beyond a round trip), loss and throughput, as the server measures them">—</dd>
       <dt>Stream</dt>       <dd id="infoStream">—</dd>
       <dt>GOP / layers</dt> <dd id="infoGop">—</dd>
     </dl>
@@ -548,6 +551,7 @@
 
       <label for="setCodec">Codec</label>
       <select id="setCodec">
+        <option value="auto">Auto</option>
         <option value="h264">H.264</option>
         <option value="h265">H.265 / HEVC</option>
         <option value="av1">AV1 (experimental)</option>

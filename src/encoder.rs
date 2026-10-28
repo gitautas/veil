@@ -105,12 +105,77 @@ impl Encoder {
         }
     }
 
+    /// Cap the bitrate (e.g. at what the network can carry), or lift the
+    /// cap with `None`. Takes effect on the next frame, without a keyframe.
+    /// Only VBR presets have a bitrate to cap.
+    pub fn set_bitrate_limit(&mut self, limit: Option<u64>) {
+        match self {
+            Self::H264(encoder) => encoder.set_bitrate_limit(limit),
+            Self::H265(encoder) => encoder.set_bitrate_limit(limit),
+            Self::Av1(encoder) => encoder.set_bitrate_limit(limit),
+        }
+    }
+
+    /// (current target, the preset's target) average bitrates, for VBR.
+    pub fn bitrates(&self) -> (Option<u64>, Option<u64>) {
+        match self {
+            Self::H264(encoder) => encoder.bitrates(),
+            Self::H265(encoder) => encoder.bitrates(),
+            Self::Av1(encoder) => encoder.bitrates(),
+        }
+    }
+
     pub fn request_refresh(&mut self) {
         match self {
             Encoder::H264(encoder) => encoder.request_refresh(),
             Encoder::H265(encoder) => encoder.request_refresh(),
             Encoder::Av1(encoder) => encoder.request_refresh(),
         }
+    }
+}
+
+/// A rate control description for Vulkan: VkVideoEncodeRateControlInfoKHR,
+/// its codec-specific extension `C`, and per-layer infos with their codec
+/// extensions `L`, linked by pointer. Boxed so the pointers stay valid.
+struct RcChain<C, L> {
+    codec_layers: Vec<L>,
+    layers: Vec<vk::VideoEncodeRateControlLayerInfoKHR<'static>>,
+    codec: C,
+    info: vk::VideoEncodeRateControlInfoKHR<'static>,
+}
+
+impl<C, L> RcChain<C, L> {
+    /// `layers[i]` gets `codec_layers[i]` as its extension.
+    fn new(
+        mode: &rate_control::RateControlMode,
+        codec_layers: Vec<L>,
+        layers: Vec<vk::VideoEncodeRateControlLayerInfoKHR<'static>>,
+        codec: C,
+    ) -> Box<Self> {
+        let vbv_size = match mode {
+            rate_control::RateControlMode::Vbr(vbr) => vbr.vbv_size_ms,
+            _ => 0,
+        };
+        let mut chain = Box::new(Self {
+            codec_layers,
+            layers,
+            codec,
+            info: vk::VideoEncodeRateControlInfoKHR::default()
+                .rate_control_mode(mode.as_vk_flags())
+                .virtual_buffer_size_in_ms(vbv_size),
+        });
+        let c = &mut *chain;
+        for (layer, codec_layer) in c.layers.iter_mut().zip(c.codec_layers.iter_mut()) {
+            layer.p_next = codec_layer as *mut L as *mut std::ffi::c_void;
+        }
+        c.info.layer_count = c.layers.len() as u32;
+        c.info.p_layers = if c.layers.is_empty() { std::ptr::null() } else { c.layers.as_ptr() };
+        c.info.p_next = &mut c.codec as *mut C as *mut std::ffi::c_void;
+        chain
+    }
+
+    fn as_pnext(&mut self) -> *mut std::ffi::c_void {
+        &mut self.info as *mut _ as *mut std::ffi::c_void
     }
 }
 
@@ -432,6 +497,7 @@ impl EncoderInner {
         tp_release: VkTimelinePoint,
         frame_state: &gop_structure::GopFrame,
         rc_info_pnext: *mut std::ffi::c_void,
+        rc_update_pnext: Option<*mut std::ffi::c_void>,
         codec_pic_info_pnext: *mut std::ffi::c_void,
         codec_setup_info_pnext: *mut std::ffi::c_void,
         codec_ref_info_pnext: &mut [*mut std::ffi::c_void],
@@ -562,7 +628,8 @@ impl EncoderInner {
                 .reference_slots(&bound_pics);
 
             // Vulkan wants us to inform it of the current rate control, which
-            // is unset on the first frame.
+            // is unset on the first frame. A change (`rc_update_pnext`) only
+            // takes effect with the control command below.
             if frame_state.stream_position != 0 {
                 begin_info.p_next = rc_info_pnext;
             }
@@ -572,13 +639,17 @@ impl EncoderInner {
             };
         }
 
-        // Reset on keyframes.
-        if frame_state.is_keyframe {
-            let mut ctrl_info = vk::VideoCodingControlInfoKHR::default().flags(
+        // Reset on keyframes, and apply rate control changes (e.g. a new
+        // bitrate limit) whenever they come.
+        if frame_state.is_keyframe || rc_update_pnext.is_some() {
+            let flags = if frame_state.is_keyframe {
                 vk::VideoCodingControlFlagsKHR::RESET
-                    | vk::VideoCodingControlFlagsKHR::ENCODE_RATE_CONTROL,
-            );
-            ctrl_info.p_next = rc_info_pnext;
+                    | vk::VideoCodingControlFlagsKHR::ENCODE_RATE_CONTROL
+            } else {
+                vk::VideoCodingControlFlagsKHR::ENCODE_RATE_CONTROL
+            };
+            let mut ctrl_info = vk::VideoCodingControlInfoKHR::default().flags(flags);
+            ctrl_info.p_next = rc_update_pnext.unwrap_or(rc_info_pnext);
 
             unsafe {
                 video_device.cmd_control_video_coding(frame.encode_cb, &ctrl_info);

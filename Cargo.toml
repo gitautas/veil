@@ -54,7 +54,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wayland-protocols = { version="0.32", features=["server", "staging", "unstable"] }
 wayland-scanner = "0.31"
 wayland-server = "0.31"
-wtransport = { version = "0.7", features = ["self-signed"] }
+wtransport = { version = "0.7", features = ["self-signed", "quinn"] }
 sha2 = "0.11"
 hex = "0.4"
 x11rb = { version = "0.13", features = ["all-extensions", "allow-unsafe-code"] }
